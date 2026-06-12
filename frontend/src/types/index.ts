@@ -1,0 +1,55 @@
+// TypeScript mirrors of the backend Pydantic models.
+// Keep in sync with app/core/models.py.
+
+export type DocumentStatus = 'pending' | 'processing' | 'ready' | 'failed'
+
+export interface DocumentRecord {
+  document_id: string
+  filename: string
+  status: DocumentStatus
+  file_size_bytes: number
+  chunk_count: number | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface UploadResponse {
+  document_id: string
+  filename: string
+  status: DocumentStatus
+}
+
+export interface Citation {
+  document_name: string
+  page_number: number
+  chunk_index: number
+  relevance_score: number
+}
+
+export interface QueryResponse {
+  answer: string
+  citations: Citation[]
+  retrieval_count: number
+  context_chunks_used: number
+  latency_ms: number
+}
+
+export interface QueryRequest {
+  question: string
+  top_k?: number
+  score_threshold?: number
+}
+
+// ── UI-only types ──────────────────────────────────────────────────────────────
+
+export type MessageRole = 'user' | 'assistant'
+
+export interface ChatMessage {
+  id: string
+  role: MessageRole
+  content: string
+  citations?: Citation[]
+  latency_ms?: number
+  isLoading?: boolean
+}

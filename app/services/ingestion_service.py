@@ -108,14 +108,18 @@ class IngestionService:
         # 2. Format detection — raises InvalidFileTypeError for unsupported types
         get_extractor(content, filename)
 
-        # 3. SHA-256 deduplication
+        # 3. SHA-256 deduplication — only block if a non-failed record exists.
+        # A FAILED document has no vectors in Qdrant, so re-uploading it is safe.
         file_hash = "sha256:" + hashlib.sha256(content).hexdigest()
         existing = self._doc_repo.get_by_hash(file_hash)
-        if existing is not None:
+        if existing is not None and existing.status != DocumentStatus.FAILED:
             raise DocumentAlreadyExistsError(
                 document_id=existing.document_id,
                 filename=existing.filename,
             )
+        if existing is not None and existing.status == DocumentStatus.FAILED:
+            # Delete the stale failed record so a fresh one can be created.
+            self._doc_repo.delete(existing.document_id)
 
         # 4. Persist PENDING record
         document_id = str(uuid.uuid4())

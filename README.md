@@ -2,7 +2,17 @@
 
 > Upload technical manuals and specifications. Ask questions. Get grounded answers with source citations — powered entirely by open-source models running locally.
 
-A production-grade **Retrieval-Augmented Generation (RAG)** platform built for industrial documentation. Designed and implemented from scratch as a portfolio project targeting AI Engineer roles, demonstrating end-to-end AI system design: document ingestion, vector search, LangGraph agent orchestration, REST API, and automated RAGAS evaluation.
+A production-grade **Retrieval-Augmented Generation (RAG)** platform built for industrial documentation. Designed and implemented from scratch as a portfolio project targeting AI Engineer roles, demonstrating end-to-end AI system design: document ingestion, vector search, LangGraph agent orchestration, REST API, React web interface, and automated RAGAS evaluation.
+
+---
+
+## What It Does
+
+1. **Upload** technical documents (PDF, DOCX, TXT) via a ChatGPT-style web interface
+2. **Ask questions** in natural language
+3. **Receive grounded answers** — the LLM only uses retrieved context, never invents facts
+4. **See citations** — every answer cites the document name, page number, and relevance score
+5. **Evaluate quality** — automated RAGAS pipeline measures faithfulness and retrieval quality
 
 ---
 
@@ -10,13 +20,13 @@ A production-grade **Retrieval-Augmented Generation (RAG)** platform built for i
 
 Evaluated on a 23-question hydraulic systems benchmark dataset:
 
-| Metric | Result | Target |
-|--------|--------|--------|
-| In-scope answer rate | **20 / 20 (100%)** | — |
-| Out-of-scope rejection | **3 / 3 (100%)** | — |
-| Faithfulness | ≥ 0.80 target | Grounded, no hallucination |
-| Answer Relevancy | ≥ 0.80 target | On-topic responses |
-| Context Recall | ≥ 0.75 target | Retrieval quality |
+| Metric | Result |
+|--------|--------|
+| In-scope answer rate | **20 / 20 (100%)** |
+| Out-of-scope rejection | **3 / 3 (100%)** |
+| Faithfulness | ≥ 0.80 target — grounded, no hallucination |
+| Answer Relevancy | ≥ 0.80 target — on-topic responses |
+| Context Recall | ≥ 0.75 target — retrieval quality |
 
 The system correctly answered every domain question and rejected every out-of-scope question (e.g. "What is the capital of France?") without hallucinating an answer.
 
@@ -26,6 +36,7 @@ The system correctly answered every domain question and rejected every out-of-sc
 
 | Layer | Technology |
 |-------|------------|
+| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, TanStack Query v5 |
 | **API** | FastAPI 0.115, Pydantic v2, Python 3.12 |
 | **Agent / Orchestration** | LangGraph 0.2 (StateGraph, conditional edges) |
 | **LLM Runtime** | Ollama — llama3.2:3b (fully local, no API keys) |
@@ -34,20 +45,72 @@ The system correctly answered every domain question and rejected every out-of-sc
 | **Document Registry** | SQLite via SQLModel |
 | **Document Parsing** | pdfplumber (PDF), python-docx (DOCX), built-in (TXT) |
 | **Evaluation** | RAGAS (Faithfulness, Answer Relevancy, Context Recall) |
-| **Infrastructure** | Docker, Docker Compose |
+| **Infrastructure** | Docker, Docker Compose, nginx |
 | **Code Quality** | Ruff, Black, Pytest (234 tests) |
 
 ---
 
-## What It Does
+## Quick Start
 
-Users can:
+**Requirements:** Docker Desktop with at least 4 GB RAM free.
 
-1. **Upload** technical documents (PDF, DOCX, TXT) via REST API
-2. **Ask questions** in natural language
-3. **Receive grounded answers** — the LLM only uses retrieved context, never invents facts
-4. **See citations** — every answer cites document name, page number, and relevance score
-5. **Evaluate quality** — automated RAGAS pipeline measures faithfulness and retrieval quality
+### 1. Clone and configure
+
+```bash
+git clone <repo-url>
+cd industrial-rag-platform
+cp .env.example .env
+```
+
+### 2. Start all services
+
+```bash
+docker compose up -d --build
+```
+
+This starts four containers:
+- `app` — FastAPI backend on port 8000
+- `frontend` — React UI on port 3000
+- `qdrant` — vector database on port 6333
+- `ollama` — local LLM runtime on port 11434
+
+> **First run:** Ollama downloads `llama3.2:3b` (~2.3 GB) and `nomic-embed-text` (~270 MB) in the background. This takes 5–10 minutes depending on your connection. The frontend will be usable once both models are ready.
+
+### 3. Check everything is ready
+
+```bash
+curl http://localhost:8000/v1/health/ready
+# {"status":"ready","services":{"ollama":true,"qdrant":true}}
+```
+
+### 4. Open the web interface
+
+Go to **http://localhost:3000**
+
+You will see a two-panel interface:
+- **Left sidebar** — document list and upload dropzone
+- **Right panel** — chat window
+
+---
+
+## Using the Web Interface
+
+### Upload a document
+
+1. Drag and drop a PDF, DOCX, or TXT file onto the sidebar dropzone, or click it to browse
+2. The document appears in the list with a **Pending** badge
+3. Status automatically updates: Pending → Processing → **Ready** (green)
+4. Ingestion takes 30–60 seconds for a typical 10-page PDF
+
+### Ask a question
+
+1. Click a **Ready** document in the sidebar to select it
+2. Type your question in the chat box and press **Enter**
+3. The answer appears with a collapsible **sources** panel showing which document pages were used
+
+### Delete a document
+
+Hover over any Ready or Failed document in the sidebar — a red trash icon appears. Clicking it removes the document and its vectors from Qdrant.
 
 ---
 
@@ -55,7 +118,12 @@ Users can:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                    FastAPI (port 8000)                    │
+│              React Frontend (port 3000)                   │
+│   nginx reverse proxy → strips /api → FastAPI            │
+└──────────────────────┬───────────────────────────────────┘
+                       │
+┌──────────────────────▼───────────────────────────────────┐
+│                FastAPI (port 8000)                        │
 │   POST /v1/documents/upload    POST /v1/chat/query        │
 │   GET  /v1/documents           GET  /v1/health/ready      │
 └──────────────┬──────────────────────┬─────────────────────┘
@@ -78,8 +146,6 @@ Users can:
 
 ### LangGraph Agent Graph
 
-The query pipeline runs as a compiled LangGraph `StateGraph` — not a sequential function chain. This enables conditional routing, clean error propagation, and node-level testability.
-
 ```
 [retrieve] ──── no chunks ────→ END   (returns "No relevant documents found")
     │
@@ -89,8 +155,7 @@ The query pipeline runs as a compiled LangGraph `StateGraph` — not a sequentia
     │
     ▼
 [generate]  ← Ollama LLM with RAG prompt
-    │   │
-    │   └── Ollama unreachable → sets error in state → END (HTTP 503)
+    │
     ▼
  [cite]  ← builds Citation objects from included chunks
     │
@@ -98,65 +163,14 @@ The query pipeline runs as a compiled LangGraph `StateGraph` — not a sequentia
   END
 ```
 
-| Node | Type | What it does |
-|------|------|--------------|
-| `retrieve` | Deterministic | Embed question → cosine search in Qdrant |
-| `assemble` | Deterministic | Sort chunks by score, trim to context budget |
-| `generate` | LLM | Call Ollama; catches connectivity errors as state |
-| `cite` | Deterministic | Build source citations from included chunks |
-
 ---
 
-## Quick Start
+## REST API
 
-**Requirements:** Docker Desktop, 4 GB RAM free
-
-```bash
-git clone <repo-url>
-cd industrial-rag-platform
-cp .env.example .env
-
-docker compose up -d --build
-# First run downloads ~2.3 GB of models — takes 5–10 minutes
-```
-
-Check everything is ready:
-```bash
-curl http://localhost:8000/v1/health/ready
-# {"status":"ready","services":{"ollama":true,"qdrant":true}}
-```
-
-Seed the demo document and run the evaluation:
-```bash
-docker compose exec app python scripts/seed_demo_data.py
-docker compose exec app python -m evaluation.run_ragas --skip-ragas
-```
-
-Upload your own document and ask a question:
-
-**Bash:**
-```bash
-curl -X POST http://localhost:8000/v1/documents/upload -F "file=@manual.pdf"
-
-curl -X POST http://localhost:8000/v1/chat/query \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What is the oil change interval?", "top_k": 5, "score_threshold": 0.6}'
-```
-
-**PowerShell:**
-```powershell
-# Upload
-Invoke-WebRequest -Uri http://localhost:8000/v1/documents/upload -Method Post -Form @{file = Get-Item -Path "manual.pdf"}
-
-# Query (save this as query.json first, then run):
-Invoke-WebRequest -UseBasicParsing -Uri http://localhost:8000/v1/chat/query -Method POST -ContentType "application/json" -InFile query.json | Select-Object -ExpandProperty Content | ConvertFrom-Json | Select-Object answer, citations, latency_ms
-```
-
----
-
-## API
+The full API is available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
 
 ### Upload a document
+
 ```
 POST /v1/documents/upload
 Content-Type: multipart/form-data
@@ -164,19 +178,11 @@ Content-Type: multipart/form-data
 → 202 Accepted
 {"document_id": "...", "filename": "manual.pdf", "status": "pending"}
 ```
-Ingestion runs in the background. Poll `GET /v1/documents/{id}` until `"status": "ready"`.
 
-**Bash:**
-```bash
-curl -X POST http://localhost:8000/v1/documents/upload -F "file=@manual.pdf"
-```
-
-**PowerShell:**
-```powershell
-Invoke-WebRequest -Uri http://localhost:8000/v1/documents/upload -Method Post -Form @{file = Get-Item -Path "manual.pdf"}
-```
+Poll `GET /v1/documents/{id}` until `"status": "ready"`.
 
 ### Ask a question
+
 ```
 POST /v1/chat/query
 Content-Type: application/json
@@ -197,31 +203,8 @@ Content-Type: application/json
 }
 ```
 
-**Bash:**
-```bash
-curl -X POST http://localhost:8000/v1/chat/query \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What are the torque specs?", "top_k": 5, "score_threshold": 0.6}'
-```
-
-**PowerShell:**
-Create a `query.json` file with your request:
-```json
-{
-  "question": "What are the torque specs for the pump coupling?",
-  "top_k": 5,
-  "score_threshold": 0.6
-}
-```
-
-Then run:
-```powershell
-Invoke-WebRequest -UseBasicParsing -Uri http://localhost:8000/v1/chat/query -Method POST -ContentType "application/json" -InFile query.json | Select-Object -ExpandProperty Content | ConvertFrom-Json | Select-Object answer, citations, latency_ms
-```
-
-This displays the answer, citations, and latency in a readable format.
-
 ### Other endpoints
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/v1/documents` | List all ingested documents |
@@ -229,34 +212,27 @@ This displays the answer, citations, and latency in a readable format.
 | `DELETE` | `/v1/documents/{id}` | Delete document and its vectors |
 | `GET` | `/v1/health/live` | Liveness probe |
 | `GET` | `/v1/health/ready` | Readiness probe (checks Qdrant + Ollama) |
-| `GET` | `/v1/metrics` | Document counts and ingestion stats |
-
----
-
-## Supported Formats
-
-| Format | Detection method |
-|--------|-----------------|
-| PDF | Magic bytes `%PDF-` (extension-independent) |
-| DOCX | ZIP magic bytes + `.docx` extension |
-| TXT | `.txt` extension, auto-detects UTF-8 / latin-1 |
 
 ---
 
 ## Evaluation Pipeline
 
+Seed the demo document first, then run evaluation:
+
 ```bash
+docker compose exec app python scripts/seed_demo_data.py
+
 # Pipeline-only (fast — no LLM judge)
 docker compose exec app python -m evaluation.run_ragas --skip-ragas
 
 # Full RAGAS scoring (slow — LLM evaluates every answer)
 docker compose exec app python -m evaluation.run_ragas
 
-# Threshold calibration sweep (finds optimal score_threshold)
+# Threshold calibration sweep
 docker compose exec app python -m evaluation.threshold_sweep
 ```
 
-Results are saved to `evaluation/results/baseline.json` and `threshold_sweep.json`.
+Results are saved to `evaluation/results/baseline.json`.
 
 ---
 
@@ -270,38 +246,65 @@ Results are saved to `evaluation/results/baseline.json` and `threshold_sweep.jso
 .venv/Scripts/pytest -m integration
 ```
 
-The test suite covers every layer independently: extractors, chunker, embedder, retriever, assembler, all LangGraph nodes, all API routes, and repository classes.
+---
+
+## Supported File Formats
+
+| Format | Detection |
+|--------|-----------|
+| PDF | Magic bytes `%PDF-` |
+| DOCX | ZIP magic bytes + `.docx` extension |
+| TXT | `.txt` extension, UTF-8 / latin-1 auto-detect |
 
 ---
 
 ## Troubleshooting
 
-### PowerShell JSON Encoding Issues
+### Models not downloading
 
-If you're using PowerShell and encounter `JSON decode error` or `Expecting property name enclosed in double quotes`, this is likely a quoting issue. 
+If the health check never returns `"ollama": true`, check Ollama logs:
 
-**Solution:** Use PowerShell's native `Invoke-WebRequest` instead of `curl.exe`, or save your request body to a JSON file and pass it via `-InFile`:
-
-```powershell
-# Method 1: Use Invoke-WebRequest (recommended)
-$body = @{
-  question = "Your question here"
-  top_k = 5
-  score_threshold = 0.6
-} | ConvertTo-Json
-
-Invoke-WebRequest -Uri http://localhost:8000/v1/chat/query -Method POST -ContentType "application/json" -Body $body
-
-# Method 2: Use a JSON file (simplest)
-# Create query.json, then:
-Invoke-WebRequest -Uri http://localhost:8000/v1/chat/query -Method POST -ContentType "application/json" -InFile query.json
+```bash
+docker compose logs ollama --tail=30
 ```
 
-For bash/Linux users, `curl` works as expected:
+You can also pull models manually:
+
 ```bash
-curl -X POST http://localhost:8000/v1/chat/query \
-  -H "Content-Type: application/json" \
-  -d '{"question": "Your question", "top_k": 5, "score_threshold": 0.6}'
+docker compose exec ollama ollama pull llama3.2:3b
+docker compose exec ollama ollama pull nomic-embed-text
+```
+
+### Stale citations (old documents appearing in answers)
+
+If citations reference files you've deleted, the Qdrant vectors were not cleaned up. Reset completely:
+
+```bash
+curl.exe -X DELETE http://localhost:6333/collections/documents
+docker compose exec app python -c "import os; os.remove('/app/uploads/documents.db')"
+docker compose restart app
+```
+
+Then re-upload your documents.
+
+### Document stuck in Processing
+
+If a document stays in Processing for more than 5 minutes, check the app logs:
+
+```bash
+docker compose logs app --tail=30
+```
+
+Common causes: Ollama model not yet downloaded, or insufficient RAM.
+
+### PowerShell JSON issues
+
+If using PowerShell and getting JSON errors with `curl`, use a JSON file instead:
+
+```powershell
+# Save request to query.json, then:
+Invoke-WebRequest -UseBasicParsing -Uri http://localhost:8000/v1/chat/query `
+  -Method POST -ContentType "application/json" -InFile query.json
 ```
 
 ---
@@ -310,25 +313,31 @@ curl -X POST http://localhost:8000/v1/chat/query \
 
 ```
 industrial-rag-platform/
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx                  # Root layout
+│   │   ├── api/client.ts            # Typed API client
+│   │   ├── hooks/                   # useDocuments, useChat
+│   │   └── components/              # Sidebar, ChatWindow, MessageBubble, etc.
+│   ├── nginx.conf                   # SPA routing + /api proxy
+│   └── Dockerfile                   # Node build → nginx serve
 ├── app/
-│   ├── agents/            # LangGraph graph + 4 node implementations
-│   ├── api/v1/routers/    # FastAPI route handlers (documents, chat, system)
-│   ├── core/              # Config, Pydantic models, exceptions, logging
-│   ├── db/                # Qdrant repository + SQLite document registry
-│   ├── rag/               # Extractor, chunker, embedder, retriever
-│   └── services/          # IngestionService + QueryService
+│   ├── agents/                      # LangGraph graph + 4 node implementations
+│   ├── api/v1/routers/              # FastAPI route handlers
+│   ├── core/                        # Config, models, exceptions, logging
+│   ├── db/                          # Qdrant repository + SQLite document registry
+│   ├── rag/                         # Extractor, chunker, embedder, retriever
+│   └── services/                    # IngestionService + QueryService
 ├── evaluation/
-│   ├── datasets/          # 23-question benchmark (industrial_qa.json)
-│   ├── metrics.py         # RAGAS computation with Ollama judge
-│   ├── pipeline_client.py # HTTP client for live API queries
-│   ├── run_ragas.py       # CLI evaluation runner
-│   └── threshold_sweep.py # Score threshold calibration
+│   ├── datasets/                    # 23-question benchmark
+│   ├── metrics.py                   # RAGAS computation
+│   └── run_ragas.py                 # Evaluation CLI
 ├── scripts/
-│   ├── seed_demo_data.py  # Generates + uploads hydraulic manual PDF
-│   └── pull_models.sh     # Ollama model init entrypoint
+│   ├── seed_demo_data.py            # Generates + uploads hydraulic manual PDF
+│   └── pull_models.sh               # Ollama model init entrypoint
 ├── tests/
-│   ├── unit/              # 234 tests, zero external dependencies
-│   └── integration/       # End-to-end tests (require Docker)
+│   ├── unit/                        # 234 tests, zero external dependencies
+│   └── integration/                 # End-to-end tests (require Docker)
 ├── docker-compose.yml
 ├── Dockerfile
 └── pyproject.toml
