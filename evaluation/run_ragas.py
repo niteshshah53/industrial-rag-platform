@@ -59,8 +59,8 @@ def load_dataset(path: Path) -> tuple[list[str], list[str], list[bool]]:
     return questions, ground_truths, in_scope_flags
 
 
-def check_prerequisites(base_url: str, ollama_url: str) -> bool:
-    """Check that the API and Ollama are reachable."""
+def check_prerequisites(base_url: str, ollama_url: str, skip_ragas: bool = False) -> bool:
+    """Check that the API is reachable. Ollama check is skipped when skip_ragas=True."""
     import httpx
 
     ok = True
@@ -76,16 +76,19 @@ def check_prerequisites(base_url: str, ollama_url: str) -> bool:
         print(f"  ✗ RAG API unreachable at {base_url}: {e}")
         ok = False
 
-    try:
-        r = httpx.get(f"{ollama_url}/api/tags", timeout=5.0)
-        if r.status_code == 200:
-            print(f"  ✓ Ollama reachable at {ollama_url}")
-        else:
-            print(f"  ✗ Ollama returned HTTP {r.status_code}")
+    if skip_ragas:
+        print("  ✓ Ollama check skipped (--skip-ragas)")
+    else:
+        try:
+            r = httpx.get(f"{ollama_url}/api/tags", timeout=5.0)
+            if r.status_code == 200:
+                print(f"  ✓ Ollama reachable at {ollama_url}")
+            else:
+                print(f"  ✗ Ollama returned HTTP {r.status_code}")
+                ok = False
+        except Exception as e:
+            print(f"  ✗ Ollama unreachable at {ollama_url}: {e}")
             ok = False
-    except Exception as e:
-        print(f"  ✗ Ollama unreachable at {ollama_url}: {e}")
-        ok = False
 
     return ok
 
@@ -104,8 +107,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--ollama-url",
-        default="http://localhost:11434",
-        help="Ollama base URL for RAGAS judge LLM (default: http://localhost:11434)",
+        default="http://ollama:11434",
+        help="Ollama base URL for RAGAS judge LLM (default: http://ollama:11434)",
     )
     parser.add_argument(
         "--score-threshold",
@@ -141,7 +144,7 @@ def main() -> int:
 
     # ── Prerequisite checks ───────────────────────────────────────────────────
     print("\nChecking prerequisites...")
-    if not check_prerequisites(args.base_url, args.ollama_url):
+    if not check_prerequisites(args.base_url, args.ollama_url, skip_ragas=args.skip_ragas):
         print(
             "\nPrerequisite check failed. Start the platform with:\n"
             "  make dev\n"

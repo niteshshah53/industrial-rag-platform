@@ -17,7 +17,7 @@ Design decisions:
     to start in this case rather than silently producing bad search results.
   - Batch upsert via qdrant_client.upsert with PointStruct list — efficient
     for bulk ingestion.
-  - search() applies score_threshold server-side via Qdrant's built-in
+  - query_points() applies score_threshold server-side via Qdrant's built-in
     score_threshold parameter — avoids fetching and discarding low-quality
     results over the network.
 """
@@ -164,9 +164,9 @@ class QdrantRepository:
                 ]
             )
 
-        results = self._client.search(
+        response = self._client.query_points(
             collection_name=self._collection_name,
-            query_vector=vector,
+            query=vector,
             query_filter=query_filter,
             limit=top_k,
             score_threshold=score_threshold,
@@ -183,7 +183,7 @@ class QdrantRepository:
                 page_number=r.payload["page_number"],
                 chunk_index=r.payload["chunk_index"],
             )
-            for r in results
+            for r in response.points
         ]
 
         logger.debug(

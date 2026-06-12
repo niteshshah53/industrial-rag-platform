@@ -30,6 +30,7 @@ RUN uv pip install -e . --no-cache
 # ── Application code ──────────────────────────────────────────
 COPY app/ ./app/
 COPY scripts/ ./scripts/
+COPY evaluation/ ./evaluation/
 
 # Ensure upload directory exists inside the container.
 # In Docker Compose this is replaced by a bind mount.
