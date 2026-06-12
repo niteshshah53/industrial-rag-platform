@@ -1,0 +1,96 @@
+[project]
+name = "industrial-rag-platform"
+version = "0.1.0"
+description = "Industrial Document Intelligence Platform — semantic search and RAG over technical documents"
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework
+    "fastapi[standard]>=0.115.0",   # includes uvicorn[standard], httpx, python-multipart
+
+    # Configuration
+    "pydantic-settings>=2.7.0",
+
+    # Database / persistence
+    "sqlmodel>=0.0.22",             # SQLite document registry
+    "qdrant-client>=1.12.0",        # Vector store
+
+    # LLM / embedding runtime
+    "ollama>=0.4.0",                # Ollama Python client
+
+    # Document processing
+    "pdfplumber>=0.11.0",           # PDF text extraction
+    "python-docx>=1.1.0",           # DOCX text extraction (Phase 5)
+    "aiofiles>=24.1.0",             # Async file I/O
+
+    # AI / agent framework
+    "langchain-text-splitters>=0.3.0",  # RecursiveCharacterTextSplitter
+    "langgraph>=0.2.0",                 # Agent graph (Phase 3)
+    "langchain-core>=0.3.0",            # Required by langgraph
+
+    # Evaluation
+    "ragas>=0.2.0",                 # RAG evaluation metrics (Phase 4)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "httpx>=0.28.0",                # Required for FastAPI TestClient
+    "ruff>=0.8.0",
+    "black>=24.10.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+# ── Ruff ────────────────────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+]
+ignore = [
+    "E501",  # line length — handled by black
+    "B008",  # function calls in default arguments (FastAPI Depends pattern)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+# ── Black ────────────────────────────────────────────────────────────────────
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+# ── Pytest ───────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--tb=short -q"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+# ── Coverage ─────────────────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["app"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

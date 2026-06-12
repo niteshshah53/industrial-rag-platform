@@ -1,0 +1,91 @@
+services:
+
+  # ── Application (FastAPI) ─────────────────────────────────────────────────
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Override service URLs to use Docker internal hostnames.
+      # These take precedence over values in .env.
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_GRPC_PORT=6334
+      - APP_ENV=development
+      - LOG_FORMAT=text
+    volumes:
+      # Mount source code for hot reload during development.
+      # Remove this volume in production to use the image's copied code.
+      - ./app:/app/app
+      - ./scripts:/app/scripts
+      # Persist uploaded files on the host so they survive container restarts.
+      - ./uploads:/app/uploads
+    # Development command with hot reload.
+    # Production uses the Dockerfile CMD (no --reload).
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level warning
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      # Use Python's stdlib so curl is not required in the slim image.
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health/live')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ── Qdrant (Vector Database) ──────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.12.1
+    ports:
+      - "6333:6333"   # REST API + Web UI
+      - "6334:6334"   # gRPC API
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── Ollama (LLM + Embedding Runtime) ─────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./scripts:/scripts
+    # Custom entrypoint: starts the server, then pulls required models.
+    # Model pulls are idempotent — skipped if already downloaded.
+    # The start_period in healthcheck allows time for first-run downloads.
+    entrypoint: ["/bin/bash", "/scripts/pull_models.sh"]
+    healthcheck:
+      # Healthy once the API responds — models may still be downloading.
+      # The app service waits for this check before starting.
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      # First run downloads llama3.2:3b (~2 GB) and nomic-embed-text (~270 MB).
+      # Allow up to 10 minutes for initial model downloads on slow connections.
+      start_period: 600s
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
+    driver: local
+  ollama_data:
+    driver: local
