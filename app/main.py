@@ -18,6 +18,7 @@ To run locally (outside Docker):
     uvicorn app.main:app --reload --port 8000
 """
 
+import os
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -26,7 +27,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1.routers import system
+from app.api.v1.routers import chat, documents, system
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.core.logging import configure_logging, get_logger
@@ -51,7 +52,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
       Phase 1: initialise Qdrant collection, create SQLite tables
       Phase 3: compile and store LangGraph RAG graph
     """
-    settings = get_settings()
+    # Resolve settings via DI overrides so tests can inject test settings.
+    # app.dependency_overrides[get_settings] is set in conftest.py for tests.
+    settings_factory = app.dependency_overrides.get(get_settings, get_settings)
+    settings = settings_factory()
     configure_logging(settings)
 
     logger.info(
@@ -64,16 +68,33 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         },
     )
 
-    # ── Phase 1: Qdrant collection initialisation ─────────────────────────────
-    # from app.db.qdrant_client import get_qdrant_client
-    # from app.db.qdrant_repository import QdrantRepository
-    # qdrant = QdrantRepository(get_qdrant_client(settings))
-    # qdrant.ensure_collection_exists()
-    # app.state.qdrant_client = qdrant.client
+    # ── Phase 1: ensure upload directory exists ───────────────────────────────
+    os.makedirs(settings.upload_dir, exist_ok=True)
 
     # ── Phase 1: SQLite document registry setup ───────────────────────────────
-    # from app.db.document_repository import DocumentRepository
-    # DocumentRepository.create_tables()
+    from app.db.document_repository import DocumentRepository
+
+    db_path = os.path.join(settings.upload_dir, "documents.db")
+    doc_repo = DocumentRepository(db_path=db_path)
+    doc_repo.create_tables()
+
+    # ── Phase 1: Qdrant collection initialisation ─────────────────────────────
+    # Only attempt Qdrant init when not in test mode — tests mock it.
+    if settings.app_env != "test":
+        from app.db.qdrant_client import get_qdrant_client
+        from app.db.qdrant_repository import QdrantRepository
+
+        qdrant_client = get_qdrant_client(settings)
+        qdrant_repo = QdrantRepository(
+            client=qdrant_client,
+            collection_name=settings.qdrant_collection_name,
+            vector_size=settings.embedding_dimensions,
+        )
+        qdrant_repo.ensure_collection_exists()
+        logger.info(
+            "Qdrant collection ready",
+            extra={"collection": settings.qdrant_collection_name},
+        )
 
     # ── Phase 3: LangGraph RAG graph compilation ──────────────────────────────
     # from app.agents.rag_graph import build_rag_graph
@@ -195,11 +216,8 @@ def create_app() -> FastAPI:
     # ── Routers ───────────────────────────────────────────────────────────────
 
     app.include_router(system.router, prefix="/v1")
-
-    # Phase 1+: register document and chat routers
-    # from app.api.v1.routers import documents, chat
-    # app.include_router(documents.router, prefix="/v1")
-    # app.include_router(chat.router, prefix="/v1")
+    app.include_router(documents.router, prefix="/v1")
+    app.include_router(chat.router, prefix="/v1")
 
     return app
 

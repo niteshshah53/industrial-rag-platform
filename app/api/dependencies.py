@@ -10,18 +10,18 @@ Using Depends() rather than direct imports enables:
 Dependencies are added per phase:
 
   Phase 0: get_settings
-  Phase 1: get_qdrant_client, get_document_repository, get_ingestion_service
+  Phase 1: get_document_repository, get_qdrant_repository, get_ingestion_service
   Phase 2: get_query_service
   Phase 3: get_rag_graph
 
 Usage in a router:
     from typing import Annotated
     from fastapi import Depends
-    from app.api.dependencies import get_settings
-    from app.core.config import Settings
+    from app.api.dependencies import get_ingestion_service
+    from app.services.ingestion_service import IngestionService
 
-    @router.get("/example")
-    async def example(settings: Annotated[Settings, Depends(get_settings)]):
+    @router.post("/upload")
+    async def upload(service: Annotated[IngestionService, Depends(get_ingestion_service)]):
         ...
 """
 
@@ -35,25 +35,82 @@ from app.core.config import Settings, get_settings
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
-# ── Phase 1 (added during Phase 1 implementation) ─────────────────────────────
-#
-# def get_qdrant_client() -> QdrantClient:
-#     """Return the shared Qdrant client singleton."""
-#     ...
-#
-# def get_document_repository(
-#     client: Annotated[QdrantClient, Depends(get_qdrant_client)]
-# ) -> DocumentRepository:
-#     ...
-#
-# def get_ingestion_service(...) -> IngestionService:
-#     ...
+# ── Phase 1 ───────────────────────────────────────────────────────────────────
 
 
-# ── Phase 2 (added during Phase 2 implementation) ─────────────────────────────
-#
-# def get_query_service(...) -> QueryService:
-#     ...
+def get_document_repository(settings: Settings = Depends(get_settings)):
+    """
+    Return a DocumentRepository backed by the configured SQLite database.
+
+    The db_path is derived from the upload_dir setting so that all data
+    for a deployment lives under the same directory.
+    """
+    import os
+
+    from app.db.document_repository import DocumentRepository
+
+    db_path = os.path.join(settings.upload_dir, "documents.db")
+    return DocumentRepository(db_path=db_path)
+
+
+def get_qdrant_repository(settings: Settings = Depends(get_settings)):
+    """
+    Return a QdrantRepository connected to the configured Qdrant instance.
+
+    The QdrantClient is constructed fresh per request. For production
+    workloads, this should be replaced with a shared client stored in
+    app.state (attached during lifespan) to avoid per-request TCP overhead.
+    """
+    from app.db.qdrant_client import get_qdrant_client
+    from app.db.qdrant_repository import QdrantRepository
+
+    client = get_qdrant_client(settings)
+    return QdrantRepository(
+        client=client,
+        collection_name=settings.qdrant_collection_name,
+        vector_size=settings.embedding_dimensions,
+    )
+
+
+def get_ingestion_service(
+    settings: Settings = Depends(get_settings),
+    doc_repo=Depends(get_document_repository),
+    qdrant_repo=Depends(get_qdrant_repository),
+):
+    """
+    Return an IngestionService wired with its dependencies.
+
+    The service holds an asyncio.Semaphore for concurrency control.
+    Each request gets a new IngestionService instance — the semaphore
+    is per-instance, which is fine since ingestion is a fire-and-forget
+    background task and the service is lightweight.
+    """
+    from app.services.ingestion_service import IngestionService
+
+    return IngestionService(
+        settings=settings,
+        doc_repo=doc_repo,
+        qdrant_repo=qdrant_repo,
+    )
+
+
+# ── Phase 2 ───────────────────────────────────────────────────────────────────
+
+
+def get_query_service(
+    settings: Settings = Depends(get_settings),
+    qdrant_repo=Depends(get_qdrant_repository),
+):
+    """
+    Return a QueryService wired with its dependencies.
+
+    QueryService holds Retriever (which holds OllamaEmbedder + QdrantRepository)
+    and a direct Ollama LLM client. All constructed fresh per request from the
+    shared settings and a fresh QdrantRepository.
+    """
+    from app.services.query_service import QueryService
+
+    return QueryService(settings=settings, qdrant_repo=qdrant_repo)
 
 
 # ── Phase 3 (added during Phase 3 implementation) ─────────────────────────────

@@ -39,6 +39,7 @@ dev = [
     "httpx>=0.28.0",                # Required for FastAPI TestClient
     "ruff>=0.8.0",
     "black>=24.10.0",
+    "fpdf2>=2.8.0",                 # Generate real PDFs in test fixtures
 ]
 
 [build-system]
@@ -84,6 +85,9 @@ testpaths = ["tests"]
 addopts = "--tb=short -q"
 filterwarnings = [
     "ignore::DeprecationWarning",
+]
+markers = [
+    "integration: marks tests that require Docker services (Qdrant + Ollama)",
 ]
 
 # ── Coverage ─────────────────────────────────────────────────────────────────

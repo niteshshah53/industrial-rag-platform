@@ -70,19 +70,58 @@ def client(test_settings: Settings) -> TestClient:
     app.dependency_overrides.clear()
 
 
-# ── Phase 1+ fixtures (added when services exist) ─────────────────────────────
-#
-# @pytest.fixture
-# def mock_qdrant_repository():
-#     """Mock QdrantRepository for unit tests that don't need a real Qdrant."""
-#     ...
-#
-# @pytest.fixture
-# def mock_embedder():
-#     """Mock Embedder that returns deterministic 768-dim zero vectors."""
-#     ...
-#
-# @pytest.fixture
-# def sample_pdf_path(tmp_path) -> Path:
-#     """Path to a small test PDF file."""
-#     ...
+# ── Phase 1 fixtures ──────────────────────────────────────────────────────────
+
+
+@pytest.fixture(scope="session")
+def sample_pdf_bytes() -> bytes:
+    """
+    Generate a minimal valid PDF in memory using fpdf2.
+
+    Session-scoped because PDF generation is deterministic and reusing
+    the same bytes across tests avoids the small CPU overhead.
+
+    Returns bytes that pass magic byte validation and contain extractable text.
+    """
+    from fpdf import FPDF
+
+    pdf = FPDF()
+    pdf.set_font("Helvetica", size=12)
+
+    pages = [
+        (
+            "HYDRAULIC SYSTEM MAINTENANCE MANUAL\n\n"
+            "Chapter 1: Safety Warnings\n\n"
+            "Always depressurise the hydraulic system before performing maintenance. "
+            "Wear appropriate personal protective equipment at all times. "
+            "Check all connections for leaks before restarting the system."
+        ),
+        (
+            "Chapter 2: Routine Maintenance Schedule\n\n"
+            "Replace hydraulic fluid every 2000 operating hours or annually. "
+            "Inspect filter elements every 500 hours. "
+            "Check actuator seals for wear every 1000 hours. "
+            "Verify relief valve settings quarterly."
+        ),
+        (
+            "Chapter 3: Troubleshooting\n\n"
+            "If system pressure drops below nominal, check for: "
+            "blocked filter, worn pump, or pressure relief valve malfunction. "
+            "If overheating occurs, verify cooler is functioning and oil level is correct."
+        ),
+    ]
+
+    for page_text in pages:
+        pdf.add_page()
+        pdf.multi_cell(0, 10, page_text)
+
+    return pdf.output()
+
+
+@pytest.fixture(scope="session")
+def sample_pdf_path(sample_pdf_bytes: bytes, tmp_path_factory) -> str:
+    """Write the sample PDF to a temp file and return its path."""
+    tmp_dir = tmp_path_factory.mktemp("pdfs")
+    pdf_path = tmp_dir / "sample_manual.pdf"
+    pdf_path.write_bytes(sample_pdf_bytes)
+    return str(pdf_path)
