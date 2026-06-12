@@ -1,0 +1,5 @@
+{
+  "question": "What is the problem statement?",
+  "top_k": 5,
+  "score_threshold": 0.5
+}

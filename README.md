@@ -133,12 +133,23 @@ docker compose exec app python -m evaluation.run_ragas --skip-ragas
 ```
 
 Upload your own document and ask a question:
+
+**Bash:**
 ```bash
 curl -X POST http://localhost:8000/v1/documents/upload -F "file=@manual.pdf"
 
 curl -X POST http://localhost:8000/v1/chat/query \
   -H "Content-Type: application/json" \
   -d '{"question": "What is the oil change interval?", "top_k": 5, "score_threshold": 0.6}'
+```
+
+**PowerShell:**
+```powershell
+# Upload
+Invoke-WebRequest -Uri http://localhost:8000/v1/documents/upload -Method Post -Form @{file = Get-Item -Path "manual.pdf"}
+
+# Query (save this as query.json first, then run):
+Invoke-WebRequest -UseBasicParsing -Uri http://localhost:8000/v1/chat/query -Method POST -ContentType "application/json" -InFile query.json | Select-Object -ExpandProperty Content | ConvertFrom-Json | Select-Object answer, citations, latency_ms
 ```
 
 ---
@@ -154,6 +165,16 @@ Content-Type: multipart/form-data
 {"document_id": "...", "filename": "manual.pdf", "status": "pending"}
 ```
 Ingestion runs in the background. Poll `GET /v1/documents/{id}` until `"status": "ready"`.
+
+**Bash:**
+```bash
+curl -X POST http://localhost:8000/v1/documents/upload -F "file=@manual.pdf"
+```
+
+**PowerShell:**
+```powershell
+Invoke-WebRequest -Uri http://localhost:8000/v1/documents/upload -Method Post -Form @{file = Get-Item -Path "manual.pdf"}
+```
 
 ### Ask a question
 ```
@@ -175,6 +196,30 @@ Content-Type: application/json
   "latency_ms": 4200.0
 }
 ```
+
+**Bash:**
+```bash
+curl -X POST http://localhost:8000/v1/chat/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What are the torque specs?", "top_k": 5, "score_threshold": 0.6}'
+```
+
+**PowerShell:**
+Create a `query.json` file with your request:
+```json
+{
+  "question": "What are the torque specs for the pump coupling?",
+  "top_k": 5,
+  "score_threshold": 0.6
+}
+```
+
+Then run:
+```powershell
+Invoke-WebRequest -UseBasicParsing -Uri http://localhost:8000/v1/chat/query -Method POST -ContentType "application/json" -InFile query.json | Select-Object -ExpandProperty Content | ConvertFrom-Json | Select-Object answer, citations, latency_ms
+```
+
+This displays the answer, citations, and latency in a readable format.
 
 ### Other endpoints
 | Method | Path | Description |
@@ -226,6 +271,38 @@ Results are saved to `evaluation/results/baseline.json` and `threshold_sweep.jso
 ```
 
 The test suite covers every layer independently: extractors, chunker, embedder, retriever, assembler, all LangGraph nodes, all API routes, and repository classes.
+
+---
+
+## Troubleshooting
+
+### PowerShell JSON Encoding Issues
+
+If you're using PowerShell and encounter `JSON decode error` or `Expecting property name enclosed in double quotes`, this is likely a quoting issue. 
+
+**Solution:** Use PowerShell's native `Invoke-WebRequest` instead of `curl.exe`, or save your request body to a JSON file and pass it via `-InFile`:
+
+```powershell
+# Method 1: Use Invoke-WebRequest (recommended)
+$body = @{
+  question = "Your question here"
+  top_k = 5
+  score_threshold = 0.6
+} | ConvertTo-Json
+
+Invoke-WebRequest -Uri http://localhost:8000/v1/chat/query -Method POST -ContentType "application/json" -Body $body
+
+# Method 2: Use a JSON file (simplest)
+# Create query.json, then:
+Invoke-WebRequest -Uri http://localhost:8000/v1/chat/query -Method POST -ContentType "application/json" -InFile query.json
+```
+
+For bash/Linux users, `curl` works as expected:
+```bash
+curl -X POST http://localhost:8000/v1/chat/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Your question", "top_k": 5, "score_threshold": 0.6}'
+```
 
 ---
 
