@@ -78,11 +78,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     doc_repo = DocumentRepository(db_path=db_path)
     doc_repo.create_tables()
 
-    # ── Phase 1: Qdrant collection initialisation ─────────────────────────────
-    # Only attempt Qdrant init when not in test mode — tests mock it.
+    # ── Phase 1 + 3: Qdrant, embedder, LLM client, and RAG graph ─────────────
+    # Only attempt live service connections when not in test mode.
+    # Unit tests override get_query_service entirely and never touch app.state.
     if settings.app_env != "test":
+        import ollama
+
+        from app.agents.rag_graph import build_rag_graph
         from app.db.qdrant_client import get_qdrant_client
         from app.db.qdrant_repository import QdrantRepository
+        from app.rag.embedder import OllamaEmbedder
 
         qdrant_client = get_qdrant_client(settings)
         qdrant_repo = QdrantRepository(
@@ -96,10 +101,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             extra={"collection": settings.qdrant_collection_name},
         )
 
-    # ── Phase 3: LangGraph RAG graph compilation ──────────────────────────────
-    # from app.agents.rag_graph import build_rag_graph
-    # app.state.rag_graph = build_rag_graph(settings=settings)
-    # logger.info("RAG graph compiled")
+        embedder = OllamaEmbedder(
+            base_url=settings.ollama_base_url,
+            model=settings.embedding_model,
+        )
+        llm_client = ollama.Client(host=settings.ollama_base_url)
+
+        app.state.rag_graph = build_rag_graph(
+            embedder=embedder,
+            qdrant_repo=qdrant_repo,
+            llm_client=llm_client,
+            settings=settings,
+        )
+        logger.info(
+            "RAG graph compiled",
+            extra={
+                "llm_model": settings.llm_model,
+                "embedding_model": settings.embedding_model,
+                "max_context_chars": settings.max_context_chars,
+            },
+        )
 
     yield  # Application is running; handle requests
 

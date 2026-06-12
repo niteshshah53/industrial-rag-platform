@@ -27,7 +27,7 @@ Usage in a router:
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
 from app.core.config import Settings, get_settings
 
@@ -94,27 +94,21 @@ def get_ingestion_service(
     )
 
 
-# ── Phase 2 ───────────────────────────────────────────────────────────────────
+# ── Phase 2 / 3 ───────────────────────────────────────────────────────────────
 
 
-def get_query_service(
-    settings: Settings = Depends(get_settings),
-    qdrant_repo=Depends(get_qdrant_repository),
-):
+def get_query_service(request: Request):
     """
-    Return a QueryService wired with its dependencies.
+    Return a QueryService backed by the compiled LangGraph RAG graph.
 
-    QueryService holds Retriever (which holds OllamaEmbedder + QdrantRepository)
-    and a direct Ollama LLM client. All constructed fresh per request from the
-    shared settings and a fresh QdrantRepository.
+    The graph is compiled once during startup (FastAPI lifespan) and stored
+    on app.state.rag_graph. Reading it here means QueryService is cheap to
+    construct per request — it only holds a reference to the shared graph.
+
+    In tests, this dependency is overridden via:
+        client.app.dependency_overrides[get_query_service] = lambda: mock_svc
+    so app.state.rag_graph is never accessed in unit tests.
     """
     from app.services.query_service import QueryService
 
-    return QueryService(settings=settings, qdrant_repo=qdrant_repo)
-
-
-# ── Phase 3 (added during Phase 3 implementation) ─────────────────────────────
-#
-# def get_rag_graph(request: Request) -> CompiledStateGraph:
-#     """Return the compiled LangGraph RAG graph from application state."""
-#     return request.app.state.rag_graph
+    return QueryService(graph=request.app.state.rag_graph)

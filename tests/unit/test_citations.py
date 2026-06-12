@@ -6,8 +6,8 @@ Verifies citation structure, ordering, and score rounding.
 No external services required.
 """
 
+from app.agents.nodes.cite import _build_citations
 from app.core.models import Citation, RetrievedChunk
-from app.services.query_service import _build_citations
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
