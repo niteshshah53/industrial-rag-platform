@@ -1,0 +1,128 @@
+{
+  "metadata": {
+    "description": "Benchmark Q&A dataset for the Industrial RAG Platform evaluation pipeline.",
+    "document": "hydraulic_system_manual.pdf",
+    "created": "2026-06-12",
+    "total_samples": 23,
+    "in_scope_samples": 20,
+    "out_of_scope_samples": 3,
+    "notes": "Ground truth answers are authored from the demo document content. Out-of-scope questions are included to verify graceful rejection behaviour."
+  },
+  "samples": [
+    {
+      "question": "What is the maximum operating temperature of the hydraulic system?",
+      "ground_truth": "The hydraulic system must not exceed 85 degrees Celsius during normal operation.",
+      "in_scope": true
+    },
+    {
+      "question": "What is the minimum hydraulic fluid temperature required before operating at full load?",
+      "ground_truth": "The hydraulic fluid temperature must be at least 10 degrees Celsius before the system is operated at full load.",
+      "in_scope": true
+    },
+    {
+      "question": "What hydraulic fluid specification is required?",
+      "ground_truth": "Use only ISO VG 46 hydraulic oil or an approved equivalent as specified in the parts manual.",
+      "in_scope": true
+    },
+    {
+      "question": "How often should the hydraulic fluid be replaced?",
+      "ground_truth": "Replace hydraulic fluid every 2000 operating hours or annually, whichever comes first.",
+      "in_scope": true
+    },
+    {
+      "question": "What is the factory-set pressure for the relief valve?",
+      "ground_truth": "The pressure relief valve is factory-set to 250 bar and must not be adjusted.",
+      "in_scope": true
+    },
+    {
+      "question": "How often should the high-pressure filter element be inspected?",
+      "ground_truth": "Inspect the high-pressure filter element every 500 operating hours.",
+      "in_scope": true
+    },
+    {
+      "question": "When must the filter element be replaced unconditionally?",
+      "ground_truth": "The filter element must be replaced during each annual service regardless of its apparent condition.",
+      "in_scope": true
+    },
+    {
+      "question": "What is the normal operating pressure range for the hydraulic system?",
+      "ground_truth": "The normal operating pressure range is 150 to 200 bar.",
+      "in_scope": true
+    },
+    {
+      "question": "What is the capacity of the hydraulic reservoir?",
+      "ground_truth": "The hydraulic reservoir has a capacity of 120 litres.",
+      "in_scope": true
+    },
+    {
+      "question": "How often should actuator seals be inspected for wear?",
+      "ground_truth": "Inspect actuator seals for wear every 1000 operating hours.",
+      "in_scope": true
+    },
+    {
+      "question": "What safety precaution must be taken before performing any maintenance on the hydraulic system?",
+      "ground_truth": "Always depressurise the hydraulic system completely before performing any maintenance work.",
+      "in_scope": true
+    },
+    {
+      "question": "What personal protective equipment is required when working near high-pressure hydraulic lines?",
+      "ground_truth": "Wear hydraulic-rated gloves and eye protection at all times when working near high-pressure hydraulic lines.",
+      "in_scope": true
+    },
+    {
+      "question": "What are the likely causes of a drop in system pressure below nominal?",
+      "ground_truth": "A drop in system pressure below nominal is typically caused by a blocked filter, a worn pump, or a pressure relief valve malfunction.",
+      "in_scope": true
+    },
+    {
+      "question": "What causes hydraulic system overheating?",
+      "ground_truth": "Hydraulic system overheating is typically caused by a malfunctioning oil cooler, a low oil level, or excessive system load.",
+      "in_scope": true
+    },
+    {
+      "question": "What procedure should be followed when starting the hydraulic system after long-term storage?",
+      "ground_truth": "After long-term storage, circulate the oil at low pressure for at least 10 minutes before applying full load.",
+      "in_scope": true
+    },
+    {
+      "question": "How often should the oil cooler be inspected?",
+      "ground_truth": "Inspect the oil cooler for blockages and leaks every 1000 operating hours.",
+      "in_scope": true
+    },
+    {
+      "question": "What is the hydraulic pump operating speed range?",
+      "ground_truth": "The hydraulic pump operates at 1450 to 1500 RPM at full load.",
+      "in_scope": true
+    },
+    {
+      "question": "How often should hydraulic hoses be inspected?",
+      "ground_truth": "Inspect all hydraulic hoses for cracks, abrasion, and connector leaks every 250 operating hours.",
+      "in_scope": true
+    },
+    {
+      "question": "What is the torque specification for filter housing bolts?",
+      "ground_truth": "Tighten filter housing bolts to 45 Nm using a calibrated torque wrench.",
+      "in_scope": true
+    },
+    {
+      "question": "What is the warranty period for the hydraulic system?",
+      "ground_truth": "The hydraulic system carries a 24-month warranty from the date of commissioning.",
+      "in_scope": true
+    },
+    {
+      "question": "What is the capital of France?",
+      "ground_truth": "This question is outside the scope of the technical documentation.",
+      "in_scope": false
+    },
+    {
+      "question": "How do I configure a Kubernetes cluster?",
+      "ground_truth": "This question is outside the scope of the technical documentation.",
+      "in_scope": false
+    },
+    {
+      "question": "What is the current stock market index?",
+      "ground_truth": "This question is outside the scope of the technical documentation.",
+      "in_scope": false
+    }
+  ]
+}

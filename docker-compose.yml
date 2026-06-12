@@ -53,7 +53,9 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:6333/healthz"]
+      # qdrant/qdrant is a minimal image with no curl or wget.
+      # Use bash's /dev/tcp pseudo-device to verify the REST port is open.
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' 2>/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -75,7 +77,8 @@ services:
     healthcheck:
       # Healthy once the API responds — models may still be downloading.
       # The app service waits for this check before starting.
-      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      # ollama/ollama includes curl; fall back to /dev/tcp if unavailable.
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags >/dev/null 2>&1 || bash -c 'echo > /dev/tcp/localhost/11434' 2>/dev/null || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10

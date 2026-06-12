@@ -1214,6 +1214,7 @@ dependencies = [
     { name = "aiofiles" },
     { name = "fastapi", extra = ["standard"] },
     { name = "langchain-core" },
+    { name = "langchain-ollama" },
     { name = "langchain-text-splitters" },
     { name = "langgraph" },
     { name = "ollama" },
@@ -1244,6 +1245,7 @@ requires-dist = [
     { name = "fpdf2", marker = "extra == 'dev'", specifier = ">=2.8.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.0" },
     { name = "langchain-core", specifier = ">=0.3.0" },
+    { name = "langchain-ollama", specifier = ">=0.2.0" },
     { name = "langchain-text-splitters", specifier = ">=0.3.0" },
     { name = "langgraph", specifier = ">=0.2.0" },
     { name = "ollama", specifier = ">=0.4.0" },
@@ -1464,6 +1466,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/64/a7/1652f8f00e2a3ed8714a57c902670897c6d001b96488abe49625d8c7fa1b/langchain_core-1.4.6.tar.gz", hash = "sha256:fb8547f83587c8f646f2136b106b732a974ffbff5537799125d16ed4c326eb63", size = 949354, upload-time = "2026-06-11T07:09:54.464Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/63/6746479c3cc0b1ff793abd03d45e12ee689d14ee899fa4c7060c6e928e9f/langchain_core-1.4.6-py3-none-any.whl", hash = "sha256:84b73716aa9f8b529b426ea256bb71bcb55dea5980212e54c89c9a040fd50230", size = 554275, upload-time = "2026-06-11T07:09:53.085Z" },
+]
+
+[[package]]
+name = "langchain-ollama"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "langchain-core" },
+    { name = "ollama" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d4/9b/6641afe8a5bf807e454fd464eddfc7eb2f2df53cb0b29744381171f9c609/langchain_ollama-1.1.0.tar.gz", hash = "sha256:f776f56f6782ae4da7692579b94a6575906118318d1023b455d7207f9d059811", size = 133075, upload-time = "2026-04-07T02:48:00.873Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2c/b2/c2acb076590a98bee2816ed5f285e00df162a34238f9e276e175e14ebc35/langchain_ollama-1.1.0-py3-none-any.whl", hash = "sha256:43ac83a6eacb0f43855810739794dd55019e0d9b17bdcf3ecb3b1991ac3b59dd", size = 31413, upload-time = "2026-04-07T02:47:59.642Z" },
 ]
 
 [[package]]

@@ -41,7 +41,6 @@ from app.core.exceptions import (
     DocumentAlreadyExistsError,
     DocumentNotFoundError,
     FileTooLargeError,
-    InvalidFileTypeError,
 )
 from app.core.logging import get_logger
 from app.core.models import DocumentListResponse, DocumentRecord, DocumentStatus, UploadResponse
@@ -49,11 +48,9 @@ from app.db.document_repository import DocumentRepository
 from app.db.qdrant_repository import QdrantRepository
 from app.rag.chunker import DocumentChunker
 from app.rag.embedder import OllamaEmbedder
-from app.rag.extractor import PDFExtractor
+from app.rag.extractor import get_extractor
 
 logger = get_logger(__name__)
-
-_PDF_MAGIC = b"%PDF-"
 
 
 class IngestionService:
@@ -96,7 +93,7 @@ class IngestionService:
 
         Raises:
             FileTooLargeError: File exceeds max_upload_size_mb.
-            InvalidFileTypeError: File is not a PDF (magic bytes check).
+            InvalidFileTypeError: File format is not supported (PDF/DOCX/TXT).
             DocumentAlreadyExistsError: A document with the same content already exists.
         """
         # 1. Size check
@@ -108,9 +105,8 @@ class IngestionService:
                 max_mb=self._settings.max_upload_size_mb,
             )
 
-        # 2. Magic bytes check (not extension-based)
-        if not content[:5] == _PDF_MAGIC:
-            raise InvalidFileTypeError(filename)
+        # 2. Format detection — raises InvalidFileTypeError for unsupported types
+        get_extractor(content, filename)
 
         # 3. SHA-256 deduplication
         file_hash = "sha256:" + hashlib.sha256(content).hexdigest()
@@ -225,10 +221,10 @@ class IngestionService:
         try:
             self._doc_repo.update_status(document_id, DocumentStatus.PROCESSING)
 
-            # Step 1: Extract
-            extractor = PDFExtractor()
+            # Step 1: Extract — pick the right extractor from content + filename
             record = self._doc_repo.get_by_id(document_id)
-            filename = record.filename if record else "unknown.pdf"
+            filename = record.filename if record else "unknown"
+            extractor = get_extractor(content, filename)
             pages = extractor.extract(content, filename)
 
             # Step 2: Chunk

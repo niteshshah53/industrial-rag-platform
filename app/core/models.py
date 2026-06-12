@@ -201,6 +201,7 @@ class QueryRequest(BaseModel):
                 "top_k": 5,
                 "score_threshold": 0.6,
                 "document_id": None,
+                "include_contexts": False,
             }
         }
     )
@@ -225,6 +226,14 @@ class QueryRequest(BaseModel):
     document_id: str | None = Field(
         default=None,
         description="Optional: restrict retrieval to chunks from this document only",
+    )
+    include_contexts: bool = Field(
+        default=False,
+        description=(
+            "When True, the response includes the raw context strings passed to the LLM. "
+            "Used by the evaluation pipeline to populate RAGAS retrieved_contexts. "
+            "Defaults to False to keep production responses compact."
+        ),
     )
 
 
@@ -263,3 +272,11 @@ class QueryResponse(BaseModel):
     )
     latency_ms: float = Field(description="Total end-to-end query latency in milliseconds")
     request_id: str = Field(description="Correlation ID for tracing this request in logs")
+    contexts: list[str] | None = Field(
+        default=None,
+        description=(
+            "Raw context strings passed to the LLM, one per included chunk. "
+            "Only present when QueryRequest.include_contexts=True. "
+            "Used by the RAGAS evaluation pipeline."
+        ),
+    )

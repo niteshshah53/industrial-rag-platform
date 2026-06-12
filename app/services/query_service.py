@@ -133,6 +133,9 @@ class QueryService:
         citations = final_state.get("citations", [])
         answer = final_state.get("answer", "")
 
+        # Populate context texts when the caller requested them (evaluation use).
+        contexts = [chunk.text for chunk in included_chunks] if request.include_contexts else None
+
         logger.info(
             "Query pipeline complete",
             extra={
@@ -151,4 +154,5 @@ class QueryService:
             context_chunks_used=len(included_chunks),
             latency_ms=latency_ms,
             request_id=request_id,
+            contexts=contexts,
         )

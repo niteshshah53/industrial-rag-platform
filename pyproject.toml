@@ -26,6 +26,7 @@ dependencies = [
     "langchain-text-splitters>=0.3.0",  # RecursiveCharacterTextSplitter
     "langgraph>=0.2.0",                 # Agent graph (Phase 3)
     "langchain-core>=0.3.0",            # Required by langgraph
+    "langchain-ollama>=0.2.0",          # Ollama LangChain integration (Phase 4 RAGAS judge LLM)
 
     # Evaluation
     "ragas>=0.2.0",                 # RAG evaluation metrics (Phase 4)

@@ -123,12 +123,12 @@ class DocumentAlreadyExistsError(AppError):
 
 class InvalidFileTypeError(AppError):
     """
-    Raised when the uploaded file is not a supported type.
-    Validation is based on magic bytes, not file extension.
+    Raised when the uploaded file is not a supported type (PDF, DOCX, or TXT).
+    Detection uses magic bytes for PDF/DOCX; TXT falls back to file extension.
     """
 
     def __init__(self, filename: str, supported_types: list[str] | None = None) -> None:
-        supported = supported_types or ["PDF"]
+        supported = supported_types or ["PDF", "DOCX", "TXT"]
         super().__init__(
             message=(
                 f"File '{filename}' is not a supported document type. "

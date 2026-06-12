@@ -29,11 +29,11 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PayloadSchemaType, VectorParams
+from qdrant_client import QdrantClient  # noqa: E402
+from qdrant_client.models import Distance, PayloadSchemaType, VectorParams  # noqa: E402
 
-from app.core.config import get_settings
-from app.core.logging import configure_logging, get_logger
+from app.core.config import get_settings  # noqa: E402
+from app.core.logging import configure_logging, get_logger  # noqa: E402
 
 configure_logging()
 logger = get_logger(__name__)
