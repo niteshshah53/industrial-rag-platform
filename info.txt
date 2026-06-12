@@ -1,0 +1,220 @@
+================================================================================
+INDUSTRIAL DOCUMENT INTELLIGENCE PLATFORM
+Project Summary — AI Engineering Portfolio
+================================================================================
+
+WHAT IS IT?
+-----------
+A production-ready Retrieval-Augmented Generation (RAG) platform that lets
+users upload industrial technical documents (PDF, DOCX, TXT) and ask questions
+in natural language. The system retrieves the most relevant passages from those
+documents and uses a local LLM to generate grounded, cited answers.
+
+Key guarantee: the LLM never answers from general knowledge. If the answer
+is not in the uploaded documents, the system returns "No relevant documents
+found." This was verified — 3/3 out-of-scope test questions were correctly
+rejected (100% accuracy) including "What is the capital of France?" and
+"How do I configure a Kubernetes cluster?".
+
+
+THE PROBLEM IT SOLVES
+---------------------
+Industrial engineers and maintenance technicians work with hundreds of pages
+of technical manuals, service bulletins, and specifications. Finding the right
+information — torque specs, fluid grades, maintenance intervals — takes time
+and is error-prone when done manually. This platform makes that knowledge
+instantly queryable via a REST API.
+
+
+HOW IT WAS BUILT — PHASE BY PHASE
+-----------------------------------
+
+PHASE 1 — Document Ingestion Pipeline
+  Goal: Turn raw PDF files into searchable vectors stored in Qdrant.
+
+  What was built:
+  - PDFExtractor: extracts text page-by-page using pdfplumber, preserving
+    page numbers for citations. Validates magic bytes, detects password
+    protection, raises NoTextLayerError for scanned-only PDFs.
+  - DocumentChunker: wraps LangChain's RecursiveCharacterTextSplitter.
+    Uses character-based chunking (1024 chars, 128 overlap) rather than
+    token-based so it works with any embedding model.
+  - OllamaEmbedder: calls the local Ollama API to embed chunks using
+    nomic-embed-text (768 dimensions). Processes in batches of 32.
+  - QdrantRepository: upserts chunk vectors with full metadata payload
+    (document_id, filename, page_number, chunk_index, text). Deterministic
+    chunk IDs (SHA-256 hash) make re-ingestion idempotent.
+  - IngestionService: orchestrates the full pipeline as a FastAPI background
+    task. Validates file size and format upfront, persists PENDING status,
+    runs extract → chunk → embed → upsert in a thread pool, then marks
+    READY or FAILED.
+
+  Key decision: SHA-256 deduplication at upload time prevents the same
+  document being ingested twice, which would create duplicate vectors and
+  degrade retrieval quality.
+
+
+PHASE 2 — RAG Query Pipeline and REST API
+  Goal: Accept a question, retrieve context, generate a grounded answer.
+
+  What was built:
+  - FastAPI app with versioned routes (/v1/documents, /v1/chat, /v1/health)
+  - QueryService: embed question → search Qdrant by cosine similarity →
+    assemble context (character budget: 8192 chars ≈ 2048 tokens) →
+    call Ollama LLM with a strict RAG prompt → extract citations.
+  - Citation model: every answer carries document_name, page_number,
+    chunk_index, and relevance_score so users can verify the source.
+  - Structured JSON error responses with machine-readable error codes
+    (DOCUMENT_NOT_FOUND, INVALID_FILE_TYPE, SERVICE_UNAVAILABLE, etc.)
+  - SQLite document registry via SQLModel tracking document status,
+    file hash, chunk count, and timestamps.
+  - Score threshold filtering: only chunks above cosine similarity 0.6
+    are included. Below threshold → "No relevant documents found."
+
+  Key decision: the RAG prompt explicitly instructs the LLM to answer
+  only from the provided context and say "I don't know" if it can't.
+  This prevents hallucination at the prompt level in addition to the
+  threshold guard at the retrieval level.
+
+
+PHASE 3 — LangGraph Agent Integration
+  Goal: Replace the sequential function call chain with a compiled
+  LangGraph StateGraph for better observability and testability.
+
+  What was built:
+  - RAGState TypedDict: all keys optional (total=False) so each node
+    returns only what it modifies. No full state copy per step.
+  - 4 nodes with a closure/factory pattern:
+      build_retrieve_node(embedder, qdrant_repo) → fn(state) → dict
+      build_assemble_node(max_context_chars)     → fn(state) → dict
+      build_generate_node(llm_client, model)     → fn(state) → dict
+      build_cite_node()                          → fn(state) → dict
+  - Conditional edges:
+      retrieve → END (empty results, no LLM call wasted)
+      generate → END (Ollama unreachable, sets error in state)
+  - Error-as-state pattern: the generate node catches connection errors
+    and sets state["error"] = "service_unavailable" instead of raising.
+    QueryService reads this after graph.invoke() and raises
+    ServiceUnavailableError → HTTP 503.
+  - Graph compiled once at FastAPI startup lifespan; reused across requests.
+
+  Key decision: keeping nodes as pure functions (input dict → output dict)
+  makes them independently unit-testable without mocking the graph runtime.
+  All 35 node tests run with zero external dependencies.
+
+
+PHASE 4 — Evaluation Pipeline
+  Goal: Quantitatively measure answer quality with automated metrics.
+
+  What was built:
+  - 23-question benchmark dataset (evaluation/datasets/industrial_qa.json):
+    20 in-scope hydraulic systems questions with ground truth answers,
+    3 out-of-scope questions to test rejection behaviour.
+  - PipelineClient: HTTP client that queries the live API for each
+    benchmark question. Sends include_contexts=True so RAGAS gets the
+    actual retrieved chunk texts for metric computation.
+  - RAGAS integration with Ollama as the judge LLM (no OpenAI dependency):
+      Faithfulness:     are all claims in the answer supported by context?
+      Answer Relevancy: is the answer relevant to the question asked?
+      Context Recall:   does retrieved context contain the needed info?
+  - Threshold sweep (evaluation/threshold_sweep.py): runs the full
+    evaluation at thresholds 0.4, 0.5, 0.6, 0.7 and recommends the
+    one with the highest harmonic mean across all three metrics.
+  - seed_demo_data.py: programmatically generates a 13-page hydraulic
+    system manual as a PDF using fpdf2, uploads it, and waits for READY.
+
+  Key decision: using Ollama as the RAGAS judge LLM (via LangChain wrappers)
+  means the entire evaluation pipeline runs locally with no API costs,
+  making it fully reproducible and CI-friendly.
+
+
+PHASE 5 — Multi-format Support and Production Polish
+  Goal: Support DOCX and TXT documents; complete the production story.
+
+  What was built:
+  - DocxExtractor: extracts body paragraphs from DOCX files using
+    python-docx. Groups paragraphs into virtual pages of 3000 chars
+    so downstream chunking still gets page-number metadata for citations.
+  - TxtExtractor: decodes plain text (UTF-8 with latin-1 fallback) and
+    splits into virtual pages at paragraph boundaries.
+  - get_extractor(content, filename) factory: detects format via magic
+    bytes (PDF: %PDF-, DOCX: PK\x03\x04 + .docx extension, TXT: .txt
+    extension) and returns the appropriate extractor. Raises
+    InvalidFileTypeError for anything else.
+  - IngestionService updated to use the factory — zero changes to the
+    ingestion pipeline logic itself.
+
+
+ARCHITECTURE DECISIONS
+----------------------
+
+Clean Architecture (6 layers):
+  API → Service → Agent → RAG → DB → Core
+  Dependencies only flow inward. Route handlers contain zero business logic.
+
+Async design:
+  All FastAPI routes are async. CPU-bound work (PDF parsing, embedding,
+  LLM inference) runs in asyncio.get_event_loop().run_in_executor(None, ...)
+  to avoid blocking the event loop. An asyncio.Semaphore caps concurrent
+  ingestion pipelines (default: 2) to prevent OOM from large documents.
+
+Deterministic vs. LLM nodes:
+  Retrieval, context assembly, and citation generation are deterministic —
+  no LLM calls. Only answer generation uses the LLM. This minimises
+  latency and cost; deterministic steps are also faster to unit test.
+
+No hardcoded model names:
+  Every model reference (LLM, embeddings, dimensions) is read from
+  environment variables via pydantic-settings. Swapping models requires
+  only a config change, no code changes.
+
+Structured logging:
+  JSON format in production, coloured text in development. Every log entry
+  includes request_id, document_id, latency_ms as structured fields for
+  log aggregation (e.g. Datadog, CloudWatch).
+
+
+RESULTS
+-------
+- 234 unit tests passing, all requiring zero external services
+- 20/20 in-scope benchmark questions answered correctly
+- 3/3 out-of-scope questions correctly rejected (100%)
+- End-to-end query latency: 1–8 seconds on CPU (llama3.2:3b)
+- Document ingestion: ~30–60 seconds for a 10-page PDF
+
+
+WHAT I WOULD ADD IN PRODUCTION
+--------------------------------
+- OCR support for scanned PDFs (Tesseract or cloud vision API)
+- Re-ranking step (cross-encoder) to improve retrieval precision
+- Streaming responses via Server-Sent Events (SSE)
+- Authentication and multi-tenant document isolation
+- Kubernetes deployment manifests (Helm chart)
+- CI/CD pipeline (GitHub Actions: test → lint → build → push)
+- Prometheus metrics endpoint for latency histograms
+- Document version management (re-ingest without duplicate vectors)
+
+
+TECHNOLOGIES AT A GLANCE
+------------------------
+Python 3.12         FastAPI             Pydantic v2
+LangGraph           Ollama              llama3.2:3b
+nomic-embed-text    Qdrant              SQLite / SQLModel
+pdfplumber          python-docx         RAGAS
+Docker              Docker Compose      Ruff / Black / Pytest
+
+
+REPOSITORY STRUCTURE
+--------------------
+app/agents/         LangGraph graph + 4 node implementations
+app/api/            FastAPI routers (documents, chat, health)
+app/core/           Config, models, exceptions, logging, prompts
+app/db/             Qdrant repository + SQLite document registry
+app/rag/            Extractor (PDF/DOCX/TXT), chunker, embedder, retriever
+app/services/       IngestionService, QueryService
+evaluation/         RAGAS pipeline, benchmark dataset, threshold sweep
+scripts/            Seeding, collection init, model download
+tests/unit/         234 tests, no external dependencies
+tests/integration/  End-to-end tests (require running Docker stack)
+
+================================================================================
