@@ -5,18 +5,19 @@
 
 ## Overview
 
-This roadmap breaks the project into six sequential phases. Each phase produces a vertically complete, working slice of the system — no phase ends with a partial pipeline.
+This roadmap breaks the project into seven sequential phases. Each phase produces a vertically complete, working slice of the system — no phase ends with a partial pipeline.
 
 **Guiding constraint:** A phase is not complete until its acceptance criteria all pass. Do not begin Phase N+1 until Phase N is fully working end-to-end.
 
-| Phase | Name | Description |
-|---|---|---|
-| 0 | Foundation | Project scaffold, tooling, infrastructure, empty app |
-| 1 | Document Ingestion | PDF → chunks → embeddings → Qdrant |
-| 2 | RAG Query Pipeline | Question → retrieval → generation → citations |
-| 3 | LangGraph Agent | Migrate query pipeline to a stateful 4-node graph |
-| 4 | Evaluation Pipeline | RAGAS metrics, benchmark dataset, threshold calibration |
-| 5 | Production Hardening | Multi-format support, observability, demo, portfolio polish |
+| Phase | Name | Status | Description |
+|---|---|---|---|
+| 0 | Foundation | ✅ Complete | Project scaffold, tooling, infrastructure, empty app |
+| 1 | Document Ingestion | ✅ Complete | PDF → chunks → embeddings → Qdrant |
+| 2 | RAG Query Pipeline | ✅ Complete | Question → retrieval → generation → citations |
+| 3 | LangGraph Agent | ✅ Complete | Migrate query pipeline to a stateful 4-node graph |
+| 4 | Evaluation Pipeline | ✅ Complete | RAGAS metrics, benchmark dataset, threshold calibration |
+| 5 | Production Hardening | ✅ Complete | Multi-format support (PDF/DOCX/TXT), README, portfolio polish |
+| 6 | Web Frontend | 🔄 Planned | ChatGPT-style React UI — upload documents, chat, view citations |
 
 ---
 
@@ -613,6 +614,166 @@ Dockerfile                 ← multi-stage build
 
 ---
 
+## Phase 6 — Web Frontend
+
+### Goal
+
+Build a ChatGPT-style single-page web application that makes the platform usable by anyone — not just developers with API clients. Users upload documents via drag-and-drop, watch ingestion progress in real time, type questions in a chat interface, and see grounded answers with expandable source citations.
+
+By the end of this phase the full product is accessible at `http://localhost:3000` with no terminal commands required after `docker compose up`.
+
+### Why This Phase Exists
+
+Phases 1–5 produced a powerful backend API. Phase 6 turns it into a complete product. A recruiter or hiring manager can now clone the repo, run one command, and experience the system without reading API documentation or constructing curl commands. This is the difference between a backend library and a product.
+
+It also adds a new technology dimension to the portfolio: React, TypeScript, and modern frontend tooling — skills increasingly expected of AI Engineers who work on full-stack AI products.
+
+### Architecture
+
+```
+Browser (localhost:3000)
+  └── nginx container
+        ├── /          →  serves React SPA (Vite build output)
+        └── /api/*     →  proxies to FastAPI:8000
+
+React Application
+  ├── DocumentSidebar    list of documents, upload button, status badges
+  ├── UploadDropzone     drag-and-drop + file picker, upload progress
+  ├── ChatWindow         scrollable message history
+  ├── MessageBubble      user question (right) / AI answer (left)
+  ├── CitationCard       collapsible source reference per answer
+  └── api/client.ts      typed fetch wrapper over all FastAPI endpoints
+```
+
+### Design Decisions
+
+**React + TypeScript + Vite** over Next.js or plain HTML:
+- React is the industry standard for AI product frontends
+- TypeScript catches API contract mismatches at compile time
+- Vite is significantly faster than CRA; near-instant dev server
+
+**Tailwind CSS** over a component library:
+- Utility-first keeps bundle small and avoids dependency bloat
+- Dark theme trivial to add with `dark:` prefix classes
+- Sufficient for a portfolio project without extra abstraction
+
+**TanStack Query (React Query)** for data fetching:
+- Automatic document status polling (refetch every 2s until READY/FAILED)
+- Caches document list so re-renders don't trigger unnecessary requests
+- Built-in loading/error/success states with zero boilerplate
+
+**Separate nginx container** over serving from FastAPI:
+- Production-realistic: frontend and backend scale independently
+- nginx proxy eliminates CORS entirely — browser always talks to port 3000
+- Zero changes to existing FastAPI routes or configuration
+
+**Full response (spinner → answer)** over streaming:
+- Works with the existing synchronous `/v1/chat/query` endpoint today
+- Avoids backend changes (SSE streaming endpoint) for Phase 6
+- Streaming can be added as Phase 7 enhancement
+
+### Deliverables
+
+**Frontend application:**
+- Document sidebar with status badges (PENDING / PROCESSING / READY / FAILED)
+- Upload dropzone with progress feedback and error display
+- Auto-polling: document transitions to READY without page refresh
+- Chat window with full conversation history preserved in session
+- User messages on the right, AI answers on the left (ChatGPT layout)
+- Typing/loading indicator while waiting for the LLM response
+- Expandable citation cards under each answer (document name, page, score)
+- Document scope selector — optionally pin conversation to one document
+- Responsive layout (works on desktop and tablet)
+
+**Infrastructure:**
+- `frontend/Dockerfile` — multi-stage: Node build → nginx serve
+- `frontend/nginx.conf` — static file serving + `/api` proxy
+- `docker-compose.yml` — add `frontend` service on port 3000
+- `app/main.py` — add CORS middleware (required for local dev without nginx)
+
+### Files to Create
+
+```
+frontend/
+  src/
+    App.tsx                    ← root layout (sidebar + chat window)
+    main.tsx                   ← React entry point
+    index.css                  ← Tailwind directives
+    types/
+      index.ts                 ← TypeScript types mirroring API models
+    api/
+      client.ts                ← typed fetch wrapper (uploadDocument,
+                                  getDocument, listDocuments, query)
+    hooks/
+      useDocuments.ts          ← TanStack Query hooks with status polling
+      useChat.ts               ← chat message state management
+    components/
+      DocumentSidebar.tsx      ← document list + upload button
+      UploadDropzone.tsx        ← drag-and-drop file upload with progress
+      ChatWindow.tsx           ← scrollable message history
+      MessageBubble.tsx        ← user / assistant message rendering
+      CitationCard.tsx         ← collapsible source reference
+      StatusBadge.tsx          ← PENDING / PROCESSING / READY / FAILED pill
+  index.html
+  package.json
+  tsconfig.json
+  vite.config.ts
+  tailwind.config.ts
+  postcss.config.js
+  Dockerfile                   ← Node build stage + nginx serve stage
+
+app/
+  main.py                      ← add CORSMiddleware
+```
+
+### Acceptance Criteria
+
+**Document management:**
+- [ ] User can upload a PDF/DOCX/TXT file via drag-and-drop or file picker
+- [ ] Upload progress is shown during file transfer
+- [ ] Document appears in the sidebar immediately after upload with PENDING badge
+- [ ] Badge automatically updates to PROCESSING → READY without page refresh
+- [ ] Failed ingestion shows FAILED badge with error tooltip
+- [ ] User can see all previously uploaded documents on page load
+
+**Chat:**
+- [ ] User can type a question and press Enter or click Send
+- [ ] A typing indicator is shown while the API processes the request
+- [ ] The AI answer appears as a message bubble when the response arrives
+- [ ] Conversation history is preserved — multiple Q&A turns are visible
+- [ ] Out-of-scope questions display "No relevant documents found." correctly
+
+**Citations:**
+- [ ] Each AI answer shows the number of source citations
+- [ ] Clicking a citation expands it to show document name, page number, and relevance score
+- [ ] Citations are sorted by relevance score (highest first)
+
+**Infrastructure:**
+- [ ] `docker compose up -d --build` starts all four containers without errors
+- [ ] `http://localhost:3000` serves the React application
+- [ ] `/api/*` requests are proxied to FastAPI correctly (no CORS errors in browser)
+- [ ] `docker compose ps` shows all four services healthy
+
+**Quality:**
+- [ ] TypeScript compiles with zero errors (`tsc --noEmit`)
+- [ ] No browser console errors during normal operation
+- [ ] Application is usable on a 1280px wide screen without horizontal scroll
+
+### Skills Demonstrated
+
+- React 18 with functional components and hooks
+- TypeScript for full-stack type safety (shared API contracts)
+- TanStack Query for server state management and polling
+- Tailwind CSS utility-first styling
+- Vite build tooling
+- Multi-stage Docker build (Node → nginx)
+- nginx reverse proxy configuration
+- CORS middleware in FastAPI
+- Real-time UI updates via polling (ingestion status)
+- Component-driven architecture
+
+---
+
 ## Milestone Summary
 
 The table below maps each deliverable to a milestone. Use this to track progress across the full project.
@@ -647,6 +808,13 @@ The table below maps each deliverable to a milestone. Use this to track progress
 | M5.4 | 5 | README complete | All required sections present and accurate |
 | M5.5 | 5 | Five-minute setup works | Fresh clone → working query in under 5 minutes |
 | M5.6 | 5 | RAGAS targets met | Faithfulness ≥ 0.80, Context Recall ≥ 0.75, Relevancy ≥ 0.80 |
+| M6.1 | 6 | React app scaffold running | `npm run dev` serves app at localhost:5173 |
+| M6.2 | 6 | Document upload working in UI | Drag-and-drop upload reaches READY status |
+| M6.3 | 6 | Status polling working | Badge updates PENDING → READY automatically |
+| M6.4 | 6 | Chat working end-to-end | Question → answer displayed in UI |
+| M6.5 | 6 | Citations rendered | Expandable citation cards appear under each answer |
+| M6.6 | 6 | Frontend container in Docker Compose | `localhost:3000` serves the app via nginx |
+| M6.7 | 6 | Full product usable | Fresh clone → working product at localhost:3000 |
 
 ---
 
@@ -678,12 +846,19 @@ Before moving from one phase to the next, all items in this checklist must be tr
 - [ ] Threshold calibration is complete and documented
 - [ ] Baseline results committed to repository
 
-### Project complete when
+### Before starting Phase 6
 - [ ] All Phase 5 acceptance criteria pass
-- [ ] `make test`, `make lint`, `make eval` all pass
-- [ ] `make demo` runs successfully on a clean install
-- [ ] RAGAS targets met: Faithfulness ≥ 0.80, Context Recall ≥ 0.75, Answer Relevancy ≥ 0.80
-- [ ] Five-minute setup works as documented in README
+- [ ] PDF, DOCX, and TXT ingestion all working
+- [ ] `docker compose up` starts the full stack cleanly
+- [ ] README quickstart works as written
+
+### Project complete when
+- [ ] All Phase 6 acceptance criteria pass
+- [ ] `docker compose up -d --build` starts all four services
+- [ ] `http://localhost:3000` serves a usable product
+- [ ] Fresh clone → working chat in under 5 minutes with no terminal API calls
+- [ ] TypeScript compiles with zero errors
+- [ ] `make test` and `make lint` still pass (no backend regression)
 
 ---
 
@@ -705,6 +880,9 @@ A common question: what can be said about this project after each phase?
 
 **After Phase 5:**
 > Delivered a production-quality Industrial Document Intelligence Platform processing PDF/DOCX/TXT documents through a LangGraph RAG pipeline, with RAGAS evaluation, structured observability, multi-stage Docker deployment, and sub-2s p50 query latency.
+
+**After Phase 6:**
+> Built a full-stack AI product: React + TypeScript frontend with ChatGPT-style chat interface, real-time document ingestion status, expandable citation cards, and nginx reverse-proxy Docker deployment — fully operational from a single `docker compose up` command.
 
 ---
 
