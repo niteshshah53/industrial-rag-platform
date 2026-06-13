@@ -25,6 +25,8 @@ export interface Citation {
   page_number: number
   chunk_index: number
   relevance_score: number
+  snippet?: string
+  text?: string
 }
 
 export interface QueryResponse {

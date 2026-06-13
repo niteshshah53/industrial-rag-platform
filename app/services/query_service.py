@@ -40,8 +40,9 @@ if TYPE_CHECKING:
     from app.db.qdrant_repository import QdrantRepository
     from app.rag.embedder import OllamaEmbedder
 
+from app.agents.nodes.cite import _build_citations
 from app.core.logging import get_logger
-from app.core.models import Citation, QueryRequest, QueryResponse, RetrievedChunk
+from app.core.models import QueryRequest, QueryResponse, RetrievedChunk
 from app.core.prompts import RAG_SYSTEM_PROMPT, build_rag_prompt
 from app.rag.assembler import assemble_context
 
@@ -341,13 +342,5 @@ class QueryService:
         return retrieved_chunks, included_chunks, context_string
 
     @staticmethod
-    def _build_citations(included_chunks: list[RetrievedChunk]) -> list[Citation]:
-        return [
-            Citation(
-                document_name=chunk.filename,
-                page_number=chunk.page_number,
-                chunk_index=chunk.chunk_index,
-                relevance_score=round(chunk.score, 4),
-            )
-            for chunk in included_chunks
-        ]
+    def _build_citations(included_chunks: list[RetrievedChunk]):
+        return _build_citations(included_chunks)

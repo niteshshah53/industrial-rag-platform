@@ -190,6 +190,17 @@ class Citation(BaseModel):
     page_number: int = Field(description="Page the cited passage appears on (1-indexed)")
     chunk_index: int = Field(description="Position of the chunk within the document")
     relevance_score: float = Field(description="Cosine similarity score of this chunk [0, 1]")
+    snippet: str = Field(
+        default="",
+        description=(
+            "First ~200 characters of the source passage, truncated at a word boundary. "
+            "Used as a quick preview in the citation card."
+        ),
+    )
+    text: str = Field(
+        default="",
+        description="Full chunk text as extracted from the source document.",
+    )
 
 
 class ConversationTurn(BaseModel):
