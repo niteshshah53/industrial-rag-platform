@@ -52,4 +52,22 @@ export interface ChatMessage {
   citations?: Citation[]
   latency_ms?: number
   isLoading?: boolean
+  isError?: boolean
+}
+
+export interface ChatSession {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  messages: ChatMessage[]
+  documentId?: string
+}
+
+export type Theme = 'light' | 'dark' | 'system'
+
+export interface AppSettings {
+  topK: number
+  threshold: number
+  theme: Theme
 }

@@ -2,11 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom scrollbar for chat and sidebar */
+/* Scrollbar — light mode */
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: #4b5563 transparent;
+    scrollbar-color: #d1d5db transparent; /* gray-300 on light bg */
   }
 
   .scrollbar-thin::-webkit-scrollbar {
@@ -18,12 +18,35 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: #4b5563;
+    background-color: #d1d5db;
     border-radius: 3px;
   }
+}
+
+/* Scrollbar — dark mode */
+.dark .scrollbar-thin {
+  scrollbar-color: #4b5563 transparent; /* gray-600 on dark bg */
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
 }
 
 /* Smooth auto-scroll anchor behavior */
 html {
   scroll-behavior: smooth;
+}
+
+/* iPhone home-indicator safe area — applied to the chat input bar */
+.pb-safe {
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+}
+
+/* Prevent iOS safari from zooming on input focus */
+@media (max-width: 768px) {
+  input[type="text"],
+  input[type="search"],
+  textarea {
+    font-size: 16px;
+  }
 }

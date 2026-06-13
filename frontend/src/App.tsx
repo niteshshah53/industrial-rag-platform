@@ -1,34 +1,125 @@
-import { useState } from 'react'
-import DocumentSidebar from './components/DocumentSidebar'
+import { useState, useCallback, useEffect } from 'react'
+import { Menu } from 'lucide-react'
+import Sidebar from './components/Sidebar'
 import ChatWindow from './components/ChatWindow'
+import ChatInputBar from './components/ChatInputBar'
+import SettingsPanel from './components/SettingsPanel'
+import { useChat } from './hooks/useChat'
+import { useTheme } from './hooks/useTheme'
 import type { DocumentRecord } from './types'
 
 export default function App() {
+  useTheme()
+
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState<DocumentRecord | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [suggestedInput, setSuggestedInput] = useState('')
+
+  const {
+    messages,
+    sendMessage,
+    isLoading,
+    sessions,
+    activeSessionId,
+    createSession,
+    loadSession,
+    deleteSession,
+    renameSession,
+  } = useChat()
+
+  const handleNewChat = useCallback(() => {
+    createSession(selectedDoc?.document_id)
+  }, [createSession, selectedDoc])
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const meta = e.metaKey || e.ctrlKey
+      // Cmd/Ctrl+B — toggle sidebar (mobile drawer)
+      if (meta && !e.shiftKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        setSidebarOpen((prev) => !prev)
+      }
+      // Cmd/Ctrl+Shift+O — new chat
+      if (meta && e.shiftKey && e.key.toLowerCase() === 'o') {
+        e.preventDefault()
+        handleNewChat()
+      }
+      // Escape — close settings panel
+      if (e.key === 'Escape' && settingsOpen) {
+        setSettingsOpen(false)
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [handleNewChat, settingsOpen])
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
-      {/* Top nav bar */}
-      <header className="h-12 shrink-0 flex items-center px-5 bg-white border-b border-gray-200 shadow-sm z-10">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center">
-            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white" stroke="currentColor" strokeWidth={2}>
-              <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <span className="font-semibold text-gray-900 text-sm tracking-tight">
-            Industrial Document Intelligence
-          </span>
-        </div>
-        <div className="ml-auto text-xs text-gray-400">
-          Powered by Ollama · Qdrant · LangGraph
-        </div>
-      </header>
+    <div className="flex h-screen overflow-hidden bg-white dark:bg-gray-900 transition-colors duration-200">
+      {/* Mobile backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
-      {/* Main content */}
-      <div className="flex flex-1 min-h-0">
-        <DocumentSidebar selected={selectedDoc} onSelect={setSelectedDoc} />
-        <ChatWindow selectedDocument={selectedDoc} />
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onNewChat={handleNewChat}
+        onLoadSession={loadSession}
+        onDeleteSession={deleteSession}
+        onRenameSession={renameSession}
+        selectedDocument={selectedDoc}
+        onSelectDocument={setSelectedDoc}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+
+      <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        {/* Mobile topbar */}
+        <div className="lg:hidden flex items-center px-4 h-12 shrink-0 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 gap-3">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open sidebar"
+            title="Open sidebar (Ctrl+B)"
+            className="shrink-0 p-1 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100 rounded transition-colors"
+          >
+            <Menu size={20} />
+          </button>
+          <div className="flex-1 min-w-0">
+            {/* Primary: active session title (or app name as fallback) */}
+            <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm truncate leading-tight">
+              {sessions.find((s) => s.id === activeSessionId)?.title ?? 'Industrial Document Intelligence'}
+            </p>
+            {/* Subtitle: selected document name */}
+            {selectedDoc && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 truncate leading-tight">
+                {selectedDoc.filename}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <ChatWindow
+          selectedDocument={selectedDoc}
+          messages={messages}
+          onSuggestPrompt={setSuggestedInput}
+        />
+
+        <ChatInputBar
+          disabled={!selectedDoc || selectedDoc.status !== 'ready'}
+          isLoading={isLoading}
+          onSend={(text) => sendMessage(text, selectedDoc?.document_id)}
+          onDocumentUploaded={setSelectedDoc}
+          suggestedInput={suggestedInput}
+          onSuggestConsumed={() => setSuggestedInput('')}
+        />
       </div>
     </div>
   )
