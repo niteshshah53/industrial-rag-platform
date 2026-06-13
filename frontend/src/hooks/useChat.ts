@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { streamChat } from '../api/client'
-import type { ChatMessage, ChatSession, QueryRequest } from '../types'
+import type { ChatMessage, ChatSession, ConversationTurn, QueryRequest } from '../types'
 
 const SESSIONS_KEY = 'rag_chat_sessions'
 const SETTINGS_KEY = 'rag_app_settings'
@@ -182,6 +182,16 @@ export function useChat() {
         return next
       })
 
+      // Collect the last 6 completed messages as conversation history BEFORE
+      // patching the session (so we don't include the current turn in history).
+      const MAX_HISTORY = 6
+      const priorMsgs = sessionsRef.current
+        .find((s) => s.id === sessionId)?.messages ?? []
+      const history: ConversationTurn[] = priorMsgs
+        .filter((m) => !m.isLoading && !m.isStreaming && !m.isError && m.content)
+        .slice(-MAX_HISTORY)
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+
       const userMsg: ChatMessage = {
         id: nextMsgId(),
         role: 'user',
@@ -205,6 +215,7 @@ export function useChat() {
           top_k: topK,
           score_threshold: threshold,
           document_id: documentId,
+          conversation_history: history,
         }
 
         let gotFirstToken = false

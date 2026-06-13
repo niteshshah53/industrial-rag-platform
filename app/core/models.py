@@ -13,6 +13,7 @@ Models are added per phase:
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -191,6 +192,19 @@ class Citation(BaseModel):
     relevance_score: float = Field(description="Cosine similarity score of this chunk [0, 1]")
 
 
+class ConversationTurn(BaseModel):
+    """
+    A single message in the conversation history sent by the client.
+
+    Used to provide multi-turn context to the LLM. The client sends the last
+    N completed turns so the model can resolve references like "that value" or
+    "the previous answer".
+    """
+
+    role: Literal["user", "assistant"] = Field(description="Message role")
+    content: str = Field(min_length=1, description="Message text")
+
+
 class QueryRequest(BaseModel):
     """Request body for POST /v1/chat/query."""
 
@@ -233,6 +247,15 @@ class QueryRequest(BaseModel):
             "When True, the response includes the raw context strings passed to the LLM. "
             "Used by the evaluation pipeline to populate RAGAS retrieved_contexts. "
             "Defaults to False to keep production responses compact."
+        ),
+    )
+    conversation_history: list[ConversationTurn] = Field(
+        default_factory=list,
+        description=(
+            "Prior conversation turns for multi-turn context. The client sends the last "
+            "N completed turns (user + assistant alternating). These are prepended to the "
+            "LLM message list so the model can resolve follow-up references. "
+            "Capped client-side; server applies no additional truncation."
         ),
     )
 

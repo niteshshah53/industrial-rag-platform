@@ -131,6 +131,7 @@ class QueryService:
             "document_id": request.document_id,
             "request_id": request_id,
             "start_time": start_time,
+            "conversation_history": [t.model_dump() for t in request.conversation_history],
         }
 
         final_state: RAGState = self._graph.invoke(initial_state)
@@ -244,10 +245,9 @@ class QueryService:
 
         # ── Step 3: stream generation from Ollama ─────────────────────────────
         prompt = build_rag_prompt(question=request.question, context=context_string)
-        messages = [
-            {"role": "system", "content": RAG_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ]
+        messages: list[dict] = [{"role": "system", "content": RAG_SYSTEM_PROMPT}]
+        messages.extend(t.model_dump() for t in request.conversation_history)
+        messages.append({"role": "user", "content": prompt})
 
         full_answer = ""
 

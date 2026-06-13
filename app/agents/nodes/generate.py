@@ -72,12 +72,17 @@ def build_generate_node(
         gen_start = time.monotonic()
 
         try:
+            # Build message list: system + prior turns + current question.
+            # Prior turns let the LLM resolve follow-up references ("that value",
+            # "the previous answer") without re-retrieving the same context.
+            history = state.get("conversation_history") or []
+            messages: list[dict] = [{"role": "system", "content": RAG_SYSTEM_PROMPT}]
+            messages.extend(history)
+            messages.append({"role": "user", "content": prompt})
+
             response = llm_client.chat(
                 model=llm_model,
-                messages=[
-                    {"role": "system", "content": RAG_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
+                messages=messages,
             )
             answer = response.message.content.strip()
 

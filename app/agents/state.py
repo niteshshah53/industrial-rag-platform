@@ -57,6 +57,9 @@ class RAGState(TypedDict, total=False):
     document_id: str | None
     request_id: str
     start_time: float
+    # Prior turns as list of {"role": "user"|"assistant", "content": "..."}.
+    # Empty list when this is the first message in a session.
+    conversation_history: list[dict]
 
     # ── Retrieve ──────────────────────────────────────────────────────────────
     retrieved_chunks: list[RetrievedChunk]

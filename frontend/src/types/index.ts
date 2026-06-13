@@ -35,11 +35,17 @@ export interface QueryResponse {
   latency_ms: number
 }
 
+export interface ConversationTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface QueryRequest {
   question: string
   top_k?: number
   score_threshold?: number
   document_id?: string
+  conversation_history?: ConversationTurn[]
 }
 
 // ── UI-only types ──────────────────────────────────────────────────────────────
