@@ -1,20 +1,22 @@
 """
-Chat / query API endpoint.
+Chat / query API endpoints.
 
 Routes:
-  POST /v1/chat/query — submit a question, receive a grounded answer with citations
+  POST /v1/chat/query  — blocking: full JSON response with answer + citations
+  POST /v1/chat/stream — streaming: SSE token stream, done event with citations
 
 Design decisions:
-  - The route receives the FastAPI Request to access request.state.request_id,
-    which was set by the request_id_middleware in main.py. This threads the
-    correlation ID through the entire query pipeline without manual propagation.
-  - All business logic is in QueryService. This router only handles HTTP
+  - Both routes receive the FastAPI Request to access request.state.request_id,
+    which was set by the request_id_middleware in main.py.
+  - All business logic lives in QueryService. This router only handles HTTP
     concerns: parsing the request body and returning the response.
   - ServiceUnavailableError (Ollama/Qdrant down) is caught by the global
-    AppError handler in main.py and returned as HTTP 503.
+    AppError handler in main.py for /query. For /stream, errors are emitted
+    as SSE error events so the client receives them inline.
 """
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import get_query_service
 from app.core.models import QueryRequest, QueryResponse
@@ -48,3 +50,38 @@ async def query(
     """
     request_id = getattr(request.state, "request_id", None)
     return await service.query(query_request, request_id=request_id)
+
+
+@router.post(
+    "/stream",
+    summary="Stream a response via SSE",
+    description=(
+        "Submit a natural-language question and receive the answer as a "
+        "Server-Sent Events stream. Tokens arrive in real time as they are "
+        "generated. The final event contains citations and pipeline metrics. "
+        "Event format: `data: {type, ...}\\n\\n`. "
+        "Types: `token` (incremental content), `done` (final metadata), `error`."
+    ),
+)
+async def stream_query(
+    request: Request,
+    query_request: QueryRequest,
+    service: QueryService = Depends(get_query_service),
+) -> StreamingResponse:
+    """
+    Stream the RAG response as SSE events.
+
+    The response body is a sequence of ``data: {json}\\n\\n`` lines.
+    Token events arrive during generation; the done event carries citations
+    and latency once generation is complete.
+    """
+    request_id = getattr(request.state, "request_id", None)
+    return StreamingResponse(
+        service.stream_query(query_request, request_id=request_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

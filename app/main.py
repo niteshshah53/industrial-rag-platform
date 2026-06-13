@@ -113,6 +113,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             llm_client=llm_client,
             settings=settings,
         )
+        # Store streaming deps so QueryService can bypass the graph for SSE.
+        app.state.embedder = embedder
+        app.state.qdrant_repo = qdrant_repo
+        app.state.ollama_base_url = settings.ollama_base_url
+        app.state.llm_model = settings.llm_model
+        app.state.max_context_chars = settings.max_context_chars
+
         logger.info(
             "RAG graph compiled",
             extra={

@@ -6,12 +6,12 @@ export type DocumentStatus = 'pending' | 'processing' | 'ready' | 'failed'
 export interface DocumentRecord {
   document_id: string
   filename: string
+  file_hash: string
   status: DocumentStatus
   file_size_bytes: number
-  chunk_count: number | null
+  chunk_count: number
   error_message: string | null
-  created_at: string
-  updated_at: string
+  upload_timestamp: string
 }
 
 export interface UploadResponse {
@@ -39,6 +39,7 @@ export interface QueryRequest {
   question: string
   top_k?: number
   score_threshold?: number
+  document_id?: string
 }
 
 // ── UI-only types ──────────────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ export interface ChatMessage {
   citations?: Citation[]
   latency_ms?: number
   isLoading?: boolean
+  isStreaming?: boolean
   isError?: boolean
 }
 

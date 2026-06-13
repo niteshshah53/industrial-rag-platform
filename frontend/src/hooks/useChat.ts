@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { queryChat } from '../api/client'
+import { streamChat } from '../api/client'
 import type { ChatMessage, ChatSession, QueryRequest } from '../types'
 
 const SESSIONS_KEY = 'rag_chat_sessions'
@@ -10,9 +9,6 @@ let msgCounter = 0
 function nextMsgId() { return `msg-${++msgCounter}` }
 function newSessionId() { return `s-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 
-// Read the latest retrieval settings from localStorage at call time so that
-// slider changes in the settings panel are reflected in the very next query
-// without needing to thread settings state through the entire component tree.
 function readQuerySettings(): { topK: number; threshold: number } {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
@@ -53,11 +49,8 @@ function titleFromMessage(content: string): string {
  * Manages chat sessions and messages.
  *
  * Session list and messages are persisted to localStorage so they survive page
- * refreshes.  The hook exposes two surfaces:
- *   - Existing API (messages, sendMessage, clearMessages, isLoading) — used by
- *     ChatWindow, unchanged from before.
- *   - Session management API (sessions, activeSessionId, createSession, …) —
- *     used by Sidebar in Step 2.
+ * refreshes. sendMessage uses the SSE streaming endpoint so tokens appear in
+ * the UI as they are generated.
  */
 export function useChat() {
   const [sessions, setSessions] = useState<ChatSession[]>(readSessions)
@@ -65,27 +58,30 @@ export function useChat() {
     const stored = readSessions()
     return stored.length > 0 ? stored[0].id : null
   })
+  // Tracks whether a streaming request is in-flight for the active session.
+  const [isActive, setIsActive] = useState(false)
 
-  // Keep a ref so callbacks that can't have sessions in their dep array can
-  // still read the latest value without stale closures.
   const sessionsRef = useRef(sessions)
   useEffect(() => { sessionsRef.current = sessions }, [sessions])
 
-  // Messages are derived — always the active session's messages or empty.
   const messages: ChatMessage[] =
     sessions.find((s) => s.id === activeSessionId)?.messages ?? []
 
   // ── Internal updater ───────────────────────────────────────────────────────
 
+  /**
+   * Apply an updater to one session's messages.
+   * Pass persist=false during streaming to skip localStorage writes until done.
+   */
   const patchSessionMessages = useCallback(
-    (sessionId: string, updater: (msgs: ChatMessage[]) => ChatMessage[]) => {
+    (sessionId: string, updater: (msgs: ChatMessage[]) => ChatMessage[], persist = true) => {
       setSessions((prev) => {
         const next = prev.map((s) =>
           s.id === sessionId
             ? { ...s, messages: updater(s.messages), updatedAt: new Date().toISOString() }
             : s
         )
-        writeSessions(next)
+        if (persist) writeSessions(next)
         return next
       })
     },
@@ -148,15 +144,11 @@ export function useChat() {
 
   // ── Chat ───────────────────────────────────────────────────────────────────
 
-  const mutation = useMutation({
-    mutationFn: (payload: QueryRequest) => queryChat(payload),
-  })
-
   const sendMessage = useCallback(
     async (question: string, documentId?: string) => {
       if (!question.trim()) return
 
-      // Ensure there is an active session — auto-create one if needed.
+      // Ensure there is an active session.
       let sid = activeSessionId
       if (!sid) {
         sid = newSessionId()
@@ -179,7 +171,7 @@ export function useChat() {
 
       const sessionId = sid
 
-      // Auto-title from the first user message (replaces the "New Chat" default).
+      // Auto-title from the first user message.
       setSessions((prev) => {
         const session = prev.find((s) => s.id === sessionId)
         if (!session || session.title !== 'New Chat') return prev
@@ -204,41 +196,102 @@ export function useChat() {
       }
 
       patchSessionMessages(sessionId, (msgs) => [...msgs, userMsg, loadingMsg])
+      setIsActive(true)
 
       try {
         const { topK, threshold } = readQuerySettings()
-        const res = await mutation.mutateAsync({
+        const payload: QueryRequest = {
           question: question.trim(),
           top_k: topK,
           score_threshold: threshold,
-        })
+          document_id: documentId,
+        }
 
-        patchSessionMessages(sessionId, (msgs) =>
-          msgs.map((m) =>
-            m.id === loadingId
-              ? {
-                  id: loadingId,
-                  role: 'assistant',
-                  content: res.answer,
-                  citations: res.citations,
-                  latency_ms: res.latency_ms,
-                  isLoading: false,
-                }
-              : m
-          )
-        )
+        let gotFirstToken = false
+
+        for await (const event of streamChat(payload)) {
+          if (event.type === 'token') {
+            if (!gotFirstToken) {
+              gotFirstToken = true
+              // Transition: loading spinner → live streaming bubble.
+              patchSessionMessages(
+                sessionId,
+                (msgs) =>
+                  msgs.map((m) =>
+                    m.id === loadingId
+                      ? { ...m, isLoading: false, isStreaming: true, content: event.content }
+                      : m
+                  ),
+                false, // don't persist yet — wait until streaming is complete
+              )
+            } else {
+              patchSessionMessages(
+                sessionId,
+                (msgs) =>
+                  msgs.map((m) =>
+                    m.id === loadingId
+                      ? { ...m, content: m.content + event.content }
+                      : m
+                  ),
+                false,
+              )
+            }
+          } else if (event.type === 'done') {
+            patchSessionMessages(
+              sessionId,
+              (msgs) =>
+                msgs.map((m) =>
+                  m.id === loadingId
+                    ? {
+                        id: loadingId,
+                        role: 'assistant',
+                        content: event.answer,
+                        citations: event.citations,
+                        latency_ms: event.latency_ms,
+                        isLoading: false,
+                        isStreaming: false,
+                      }
+                    : m
+                ),
+              true, // persist final state to localStorage
+            )
+          } else if (event.type === 'error') {
+            patchSessionMessages(
+              sessionId,
+              (msgs) =>
+                msgs.map((m) =>
+                  m.id === loadingId
+                    ? {
+                        id: loadingId,
+                        role: 'assistant',
+                        content: event.message,
+                        isLoading: false,
+                        isStreaming: false,
+                        isError: true,
+                      }
+                    : m
+                ),
+              true,
+            )
+          }
+        }
       } catch (err) {
         const errorText = err instanceof Error ? err.message : 'Something went wrong.'
-        patchSessionMessages(sessionId, (msgs) =>
-          msgs.map((m) =>
-            m.id === loadingId
-              ? { id: loadingId, role: 'assistant', content: errorText, isLoading: false, isError: true }
-              : m
-          )
+        patchSessionMessages(
+          sessionId,
+          (msgs) =>
+            msgs.map((m) =>
+              m.id === loadingId
+                ? { id: loadingId, role: 'assistant', content: errorText, isLoading: false, isStreaming: false, isError: true }
+                : m
+            ),
+          true,
         )
+      } finally {
+        setIsActive(false)
       }
     },
-    [mutation, activeSessionId, patchSessionMessages]
+    [activeSessionId, patchSessionMessages]
   )
 
   const clearMessages = useCallback(() => {
@@ -246,12 +299,10 @@ export function useChat() {
   }, [activeSessionId, patchSessionMessages])
 
   return {
-    // ── Existing API — ChatWindow uses these; signature unchanged ──────────
     messages,
     sendMessage,
     clearMessages,
-    isLoading: mutation.isPending,
-    // ── Session management API — Sidebar will use these in Step 2 ─────────
+    isLoading: isActive,
     sessions,
     activeSessionId,
     createSession,

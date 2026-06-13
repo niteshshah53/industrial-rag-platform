@@ -32,11 +32,24 @@ export function useUploadDocument() {
   })
 }
 
-/** Delete a document — invalidates the document list on success. */
+/** Delete a single document — invalidates the document list on success. */
 export function useDeleteDocument() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => deleteDocument(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: DOCS_KEY }),
+  })
+}
+
+/** Delete multiple documents in parallel — always refreshes the list on settle. */
+export function useBulkDeleteDocuments() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(ids.map((id) => deleteDocument(id)))
+      const failed = results.filter((r) => r.status === 'rejected')
+      if (failed.length > 0) throw new Error(`${failed.length} deletion(s) failed`)
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: DOCS_KEY }),
   })
 }

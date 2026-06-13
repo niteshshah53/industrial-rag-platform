@@ -17,6 +17,7 @@ interface Props {
   selectedDocument: DocumentRecord | null
   onSelectDocument: (doc: DocumentRecord | null) => void
   onOpenSettings: () => void
+  onOpenDocuments: () => void
 }
 
 export default function Sidebar({
@@ -31,6 +32,7 @@ export default function Sidebar({
   selectedDocument,
   onSelectDocument,
   onOpenSettings,
+  onOpenDocuments,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -148,7 +150,7 @@ export default function Sidebar({
       />
 
       {/* Footer */}
-      <SidebarFooter onOpenSettings={onOpenSettings} />
+      <SidebarFooter onOpenSettings={onOpenSettings} onOpenDocuments={onOpenDocuments} />
     </aside>
   )
 }

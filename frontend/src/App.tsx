@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar'
 import ChatWindow from './components/ChatWindow'
 import ChatInputBar from './components/ChatInputBar'
 import SettingsPanel from './components/SettingsPanel'
+import DocumentsPanel from './components/DocumentsPanel'
 import { useChat } from './hooks/useChat'
 import { useTheme } from './hooks/useTheme'
 import type { DocumentRecord } from './types'
@@ -14,6 +15,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState<DocumentRecord | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [documentsOpen, setDocumentsOpen] = useState(false)
   const [suggestedInput, setSuggestedInput] = useState('')
 
   const {
@@ -77,9 +79,21 @@ export default function App() {
         selectedDocument={selectedDoc}
         onSelectDocument={setSelectedDoc}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenDocuments={() => setDocumentsOpen(true)}
       />
 
       <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      <DocumentsPanel
+        isOpen={documentsOpen}
+        onClose={() => setDocumentsOpen(false)}
+        selectedDocumentId={selectedDoc?.document_id ?? null}
+        onDocumentDeleted={(ids) => {
+          if (selectedDoc && ids.includes(selectedDoc.document_id)) {
+            setSelectedDoc(null)
+          }
+        }}
+      />
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Mobile topbar */}

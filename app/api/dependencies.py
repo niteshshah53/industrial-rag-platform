@@ -102,13 +102,21 @@ def get_query_service(request: Request):
     Return a QueryService backed by the compiled LangGraph RAG graph.
 
     The graph is compiled once during startup (FastAPI lifespan) and stored
-    on app.state.rag_graph. Reading it here means QueryService is cheap to
-    construct per request — it only holds a reference to the shared graph.
+    on app.state.rag_graph. Streaming deps (embedder, qdrant_repo, llm config)
+    are also stored on app.state so stream_query() can bypass the graph.
 
     In tests, this dependency is overridden via:
         client.app.dependency_overrides[get_query_service] = lambda: mock_svc
-    so app.state.rag_graph is never accessed in unit tests.
+    so app.state is never accessed in unit tests.
     """
     from app.services.query_service import QueryService
 
-    return QueryService(graph=request.app.state.rag_graph)
+    state = request.app.state
+    return QueryService(
+        graph=state.rag_graph,
+        embedder=getattr(state, "embedder", None),
+        qdrant_repo=getattr(state, "qdrant_repo", None),
+        ollama_base_url=getattr(state, "ollama_base_url", "http://localhost:11434"),
+        llm_model=getattr(state, "llm_model", "llama3.2:3b"),
+        max_context_chars=getattr(state, "max_context_chars", 8000),
+    )

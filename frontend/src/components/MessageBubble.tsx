@@ -49,6 +49,11 @@ export default function MessageBubble({ message }: Props) {
               <Loader2 size={14} className="animate-spin" />
               Thinking…
             </span>
+          ) : message.isStreaming ? (
+            <p className="whitespace-pre-wrap">
+              {message.content}
+              <span className="inline-block w-0.5 h-[1em] bg-gray-500 dark:bg-gray-400 ml-0.5 align-middle animate-pulse" />
+            </p>
           ) : (
             <p className="whitespace-pre-wrap">{message.content}</p>
           )}

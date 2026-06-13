@@ -5,7 +5,7 @@
 
 ## Overview
 
-This roadmap breaks the project into seven sequential phases. Each phase produces a vertically complete, working slice of the system — no phase ends with a partial pipeline.
+This roadmap breaks the project into eight sequential phases. Each phase produces a vertically complete, working slice of the system — no phase ends with a partial pipeline.
 
 **Guiding constraint:** A phase is not complete until its acceptance criteria all pass. Do not begin Phase N+1 until Phase N is fully working end-to-end.
 
@@ -17,7 +17,8 @@ This roadmap breaks the project into seven sequential phases. Each phase produce
 | 3 | LangGraph Agent | ✅ Complete | Migrate query pipeline to a stateful 4-node graph |
 | 4 | Evaluation Pipeline | ✅ Complete | RAGAS metrics, benchmark dataset, threshold calibration |
 | 5 | Production Hardening | ✅ Complete | Multi-format support (PDF/DOCX/TXT), README, portfolio polish |
-| 6 | Web Frontend | 🔄 Planned | ChatGPT-style React UI — upload documents, chat, view citations |
+| 6 | Web Frontend | ✅ Complete | ChatGPT-style React UI — upload documents, chat, view citations |
+| 7 | Production Enhancements | 🔄 In Progress | Streaming responses, conversation memory, enhanced citations |
 
 ---
 
@@ -888,3 +889,248 @@ A common question: what can be said about this project after each phase?
 
 *Created: 2026-06-12*
 *Reviewed against: PRD.md, ARCHITECTURE.md v2, CLAUDE.md*
+
+---
+
+## Phase 7 — Production Enhancements
+
+### Goal
+
+Transform the working AI product from Phase 6 into a production-grade platform with features that differentiate it from basic RAG demos: streaming responses, conversation memory, and enhanced citations.
+
+These features are chosen for maximum impact-to-effort ratio and represent real-world requirements that production AI systems must address.
+
+### Why These Features
+
+**Streaming responses** is the single highest-impact improvement. A user staring at a spinner for 5–10 seconds feels like the app is broken. Streaming makes the system feel alive and instant. Every production LLM product streams. Not streaming is a red flag in a portfolio.
+
+**Conversation memory** enables follow-up questions ("What about section 5?" after an initial question). Without memory, every turn is an isolated query — this breaks real workflows. Multi-turn RAG is the expected baseline in 2025.
+
+**Enhanced citations** close the trust loop. Showing a snippet of the actual passage that generated the answer (not just metadata) lets the user verify the answer without re-reading the full document.
+
+### Feature Ranking (Impact vs. Effort)
+
+| Feature | Impact | Effort | Priority |
+|---|---|---|---|
+| Streaming Responses | Very High | Medium | 1 — Do first |
+| Conversation Memory | High | Medium | 2 |
+| Enhanced Citations | High | Low | 3 |
+| Hybrid Search (BM25 + Vector) | Medium | Medium | 4 |
+| Multi-Document Collections | Medium | High | 5 |
+
+### Step 1 — Streaming Responses (SSE)
+
+#### Goal
+
+Replace the blocking "spinner for 5–10 seconds" UX with real-time token streaming. The first words of the answer appear in under one second; the user watches the response build word-by-word.
+
+#### Architecture
+
+```
+Browser
+  └── fetch POST /api/v1/chat/stream (ReadableStream)
+        ├── data: {"type":"token","content":"The "}
+        ├── data: {"type":"token","content":"maximum "}
+        └── data: {"type":"done","citations":[...],"latency_ms":1234}
+
+FastAPI /v1/chat/stream
+  └── StreamingResponse(service.stream_query(), media_type="text/event-stream")
+        ├── ThreadPool: Retriever.retrieve() + assemble_context()  [sync, in executor]
+        └── httpx.AsyncClient.stream() → Ollama /api/chat?stream=true  [async, token-by-token]
+```
+
+#### Files Modified
+
+```
+app/
+  main.py                   ← store embedder, qdrant_repo, llm settings on app.state
+  api/
+    dependencies.py         ← pass streaming deps to QueryService
+    v1/
+      routers/
+        chat.py             ← add POST /v1/chat/stream → StreamingResponse
+  services/
+    query_service.py        ← add stream_query() async generator
+
+frontend/src/
+  types/index.ts            ← add isStreaming?: boolean to ChatMessage
+  api/client.ts             ← add streamChat() async generator
+  hooks/useChat.ts          ← replace useMutation with streaming sendMessage
+  components/
+    MessageBubble.tsx       ← blinking cursor while isStreaming
+```
+
+#### SSE Event Schema
+
+```json
+{"type": "token", "content": "The "}
+{"type": "done", "answer": "...", "citations": [...], "retrieval_count": 5, "context_chunks_used": 3, "latency_ms": 1234.5, "request_id": "..."}
+{"type": "error", "message": "Ollama service is unavailable"}
+```
+
+#### Acceptance Criteria
+
+- [ ] `POST /v1/chat/stream` returns `Content-Type: text/event-stream`
+- [ ] First token appears in the UI within 1 second of sending a question
+- [ ] Tokens accumulate visibly in the message bubble during generation
+- [ ] Blinking cursor appears during streaming, disappears when done
+- [ ] Citations and latency appear correctly after streaming completes
+- [ ] "No relevant documents found." case handled as immediate done event (no tokens)
+- [ ] Ollama unreachable → error event → red error bubble in UI
+- [ ] No regression in the existing `/v1/chat/query` endpoint
+
+### Step 2 — Conversation Memory
+
+#### Goal
+
+Enable follow-up questions within a chat session. The RAG pipeline receives the last N turns of conversation history and includes them in the LLM prompt so the model understands references like "that", "section 5", "the previous answer".
+
+#### Architecture
+
+```
+Frontend: pass session.messages[-N:] as conversation_history in QueryRequest
+Backend:  append history turns to the Ollama messages list before generation
+          retrieve step is unchanged (retrieves based on current question only)
+```
+
+#### Files Modified
+
+```
+app/
+  core/models.py            ← add ConversationTurn model; add history field to QueryRequest
+  agents/nodes/generate.py  ← prepend history turns to Ollama messages list
+  agents/state.py           ← add conversation_history field to RAGState
+frontend/src/
+  hooks/useChat.ts          ← send last 6 messages as conversation_history
+  types/index.ts            ← add conversation_history to QueryRequest type
+```
+
+#### Acceptance Criteria
+
+- [ ] "What was mentioned about X?" correctly references a prior answer
+- [ ] History is capped at N=6 turns (configurable via settings)
+- [ ] Switching sessions resets history (no cross-session bleed)
+- [ ] Existing unit tests for generate node still pass
+
+### Step 3 — Enhanced Citations
+
+#### Goal
+
+Show a short text snippet from the source passage in each citation card, so users can verify the answer traces back to real document content without re-opening the document.
+
+#### Architecture
+
+```
+Backend: add snippet field to Citation (first 200 chars of chunk.text)
+Frontend: CitationCard renders snippet below the existing metadata line
+```
+
+#### Files Modified
+
+```
+app/
+  core/models.py            ← add snippet: str to Citation
+  agents/nodes/cite.py      ← populate snippet from chunk.text[:200]
+frontend/src/
+  types/index.ts            ← add snippet?: string to Citation
+  components/CitationCard.tsx ← render snippet below metadata
+```
+
+#### Acceptance Criteria
+
+- [ ] Citation card shows first 200 chars of source passage, truncated at word boundary
+- [ ] Snippet is absent when chunk text is not available (graceful fallback)
+- [ ] No layout regression on existing citation cards
+
+### Step 4 — Hybrid Search
+
+#### Goal
+
+Combine dense vector search (semantic similarity) with sparse BM25 keyword search. This improves retrieval for queries containing exact technical terms, part numbers, or model codes where semantic similarity alone underperforms.
+
+#### Architecture
+
+```
+Qdrant: enable sparse vector field (fastembed BM25 encoder)
+Retriever: send both dense + sparse vectors; Qdrant returns RRF-fused results
+Config: search_mode: "dense" | "hybrid" (default: "hybrid" after enabling)
+```
+
+#### Files Modified
+
+```
+app/
+  rag/embedder.py           ← add SparseEmbedder using fastembed
+  db/qdrant_repository.py   ← add sparse_vector field; hybrid_search() method
+  rag/retriever.py          ← accept search_mode param; call hybrid or dense search
+  core/models.py            ← add search_mode to QueryRequest
+```
+
+#### Acceptance Criteria
+
+- [ ] Hybrid search returns same or better results than dense-only on benchmark dataset
+- [ ] Dense-only mode still works (backward compatible)
+- [ ] RAGAS scores do not regress with hybrid mode enabled
+
+### Step 5 — Multi-Document Collections
+
+#### Goal
+
+Allow users to group documents into named collections (e.g., "Hydraulic Systems", "Electrical Manuals") and query across all documents in a collection with a single chat session.
+
+#### Architecture
+
+```
+Collections: named groups of document_ids stored in SQLite
+Qdrant filter: OR filter across all document_ids in the collection
+Chat: accept collection_id OR document_id (mutually exclusive)
+```
+
+#### Files Modified
+
+```
+app/
+  db/
+    document_repository.py  ← add collection CRUD methods
+  core/models.py            ← add Collection, CollectionCreate, CollectionResponse
+  api/v1/routers/
+    collections.py          ← POST/GET/DELETE /v1/collections
+  services/
+    query_service.py        ← resolve collection_id → document_ids for Qdrant filter
+frontend/src/
+  components/
+    SidebarDocumentSection.tsx ← add Collections tab
+    CollectionPicker.tsx       ← create/manage collections (new component)
+```
+
+#### Acceptance Criteria
+
+- [ ] User can create a named collection and add documents to it
+- [ ] Querying a collection retrieves from all member documents
+- [ ] Single-document queries continue to work unchanged
+- [ ] Deleting a document removes it from any collections it belongs to
+
+---
+
+### Phase 7 Milestones
+
+| Milestone | Step | Description | Exit Gate |
+|---|---|---|---|
+| M7.1 | 1 | SSE endpoint live | `POST /v1/chat/stream` returns event stream |
+| M7.2 | 1 | Streaming in UI | First token appears in < 1s; cursor blinks during generation |
+| M7.3 | 2 | History injected | Follow-up questions correctly reference prior turn |
+| M7.4 | 2 | Memory scoped | Switching sessions resets history |
+| M7.5 | 3 | Snippets in citations | Citation card shows 200-char source passage preview |
+| M7.6 | 4 | Hybrid search active | Dense + BM25 combined; RAGAS scores maintained |
+| M7.7 | 5 | Collections created | Users can group docs and query across a collection |
+
+### Skills Demonstrated (New in Phase 7)
+
+- Server-Sent Events (SSE) for real-time LLM streaming
+- httpx.AsyncClient for async HTTP streaming from upstream LLM services
+- Async generator pattern in FastAPI (`StreamingResponse` + `AsyncGenerator`)
+- `ReadableStream` + async generator parsing in the browser
+- Multi-turn RAG with conversation history injection into the LLM prompt
+- Hybrid dense + sparse vector search (semantic + BM25)
+- Qdrant sparse vectors with fastembed
+- Named entity grouping in vector databases (collection-scoped retrieval)
