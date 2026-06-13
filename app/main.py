@@ -88,6 +88,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from app.db.qdrant_client import get_qdrant_client
         from app.db.qdrant_repository import QdrantRepository
         from app.rag.embedder import OllamaEmbedder
+        from app.rag.sparse_embedder import SparseEmbedder
 
         qdrant_client = get_qdrant_client(settings)
         qdrant_repo = QdrantRepository(
@@ -105,6 +106,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             base_url=settings.ollama_base_url,
             model=settings.embedding_model,
         )
+        # SparseEmbedder uses lazy initialization — the BM25 model is downloaded
+        # on first embed call, not at startup, to keep startup time fast.
+        sparse_embedder = SparseEmbedder(model_name=settings.sparse_embedding_model)
         llm_client = ollama.Client(host=settings.ollama_base_url)
 
         app.state.rag_graph = build_rag_graph(
@@ -112,9 +116,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             qdrant_repo=qdrant_repo,
             llm_client=llm_client,
             settings=settings,
+            sparse_embedder=sparse_embedder,
         )
-        # Store streaming deps so QueryService can bypass the graph for SSE.
+        # Store deps so QueryService and IngestionService can access them.
         app.state.embedder = embedder
+        app.state.sparse_embedder = sparse_embedder
         app.state.qdrant_repo = qdrant_repo
         app.state.ollama_base_url = settings.ollama_base_url
         app.state.llm_model = settings.llm_model
@@ -125,6 +131,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             extra={
                 "llm_model": settings.llm_model,
                 "embedding_model": settings.embedding_model,
+                "sparse_embedding_model": settings.sparse_embedding_model,
                 "max_context_chars": settings.max_context_chars,
             },
         )

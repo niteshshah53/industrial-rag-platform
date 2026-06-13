@@ -4,10 +4,10 @@ import { useDocuments } from '../hooks/useDocuments'
 import type { DocumentRecord, DocumentStatus } from '../types'
 
 const statusDot: Record<DocumentStatus, string> = {
-  ready: 'bg-green-500',
-  processing: 'bg-blue-400 animate-pulse',
-  pending: 'bg-yellow-400',
-  failed: 'bg-red-500',
+  READY: 'bg-green-500',
+  PROCESSING: 'bg-blue-400 animate-pulse',
+  PENDING: 'bg-yellow-400',
+  FAILED: 'bg-red-500',
 }
 
 interface Props {
@@ -77,7 +77,7 @@ export default function SidebarDocumentSection({ selectedDocument, onSelectDocum
           {/* Document list */}
           {docs?.map((doc) => {
             const isSelected = selectedDocument?.document_id === doc.document_id
-            const isReady = doc.status === 'ready'
+            const isReady = doc.status === 'READY'
             return (
               <button
                 key={doc.document_id}

@@ -9,7 +9,11 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('answer:', d['answer'][:80]+'...'\\); print\\('citations:', len\\(d['citations']\\)\\); print\\('latency_ms:', d['latency_ms']\\)\")",
       "Bash(curl -s -N -X POST http://localhost:8000/v1/chat/stream -H 'Content-Type: application/json' -d '{ *)",
       "Bash(.venv/Scripts/python.exe -c ' *)",
-      "Bash(curl -s -X POST http://localhost:8000/v1/chat/query -H 'Content-Type: application/json' -d '{\"question\":\"What is U-DIADS-Bib?\",\"top_k\":2,\"score_threshold\":0.3}' --max-time 30)"
+      "Bash(curl -s -X POST http://localhost:8000/v1/chat/query -H 'Content-Type: application/json' -d '{\"question\":\"What is U-DIADS-Bib?\",\"top_k\":2,\"score_threshold\":0.3}' --max-time 30)",
+      "Bash(.venv/Scripts/pip install *)",
+      "Bash(curl -s -X POST http://localhost:8000/v1/chat/query -H 'Content-Type: application/json' -d '{\"question\": \"what is this document about?\", \"top_k\": 5, \"score_threshold\": 0.1, \"search_mode\": \"hybrid\"}')",
+      "PowerShell(Invoke-RestMethod \"http://localhost:3000\" -Method HEAD 2>&1)",
+      "PowerShell(Invoke-RestMethod \"http://localhost:8000/v1/health/live\" 2>&1)"
     ]
   }
 }

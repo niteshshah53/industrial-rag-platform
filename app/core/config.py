@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     llm_model: str = "llama3.2:3b"
     embedding_model: str = "nomic-embed-text"
     embedding_dimensions: int = 768
+    sparse_embedding_model: str = "Qdrant/bm25"  # BM25 via fastembed for hybrid search
 
     # ── Qdrant ────────────────────────────────────────────────────────────────
     qdrant_host: str = "localhost"

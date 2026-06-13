@@ -5,20 +5,22 @@ import type { ChatMessage, ChatSession, ConversationTurn, QueryRequest } from '.
 const SESSIONS_KEY = 'rag_chat_sessions'
 const SETTINGS_KEY = 'rag_app_settings'
 
-let msgCounter = 0
-function nextMsgId() { return `msg-${++msgCounter}` }
+function nextMsgId() {
+  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+}
 function newSessionId() { return `s-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 
-function readQuerySettings(): { topK: number; threshold: number } {
+function readQuerySettings(): { topK: number; threshold: number; searchMode: 'dense' | 'hybrid' } {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
     const parsed = raw ? JSON.parse(raw) : {}
     return {
       topK: typeof parsed.topK === 'number' ? parsed.topK : 5,
       threshold: typeof parsed.threshold === 'number' ? parsed.threshold : 0.3,
+      searchMode: parsed.searchMode === 'dense' ? 'dense' : 'hybrid',
     }
   } catch {
-    return { topK: 5, threshold: 0.3 }
+    return { topK: 5, threshold: 0.3, searchMode: 'hybrid' }
   }
 }
 
@@ -209,12 +211,13 @@ export function useChat() {
       setIsActive(true)
 
       try {
-        const { topK, threshold } = readQuerySettings()
+        const { topK, threshold, searchMode } = readQuerySettings()
         const payload: QueryRequest = {
           question: question.trim(),
           top_k: topK,
           score_threshold: threshold,
           document_id: documentId,
+          search_mode: searchMode,
           conversation_history: history,
         }
 

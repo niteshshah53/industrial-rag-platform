@@ -6,29 +6,25 @@ requires-python = ">=3.12"
 dependencies = [
     # Web framework
     "fastapi[standard]>=0.115.0",   # includes uvicorn[standard], httpx, python-multipart
-
     # Configuration
     "pydantic-settings>=2.7.0",
-
     # Database / persistence
     "sqlmodel>=0.0.22",             # SQLite document registry
     "qdrant-client>=1.12.0",        # Vector store
-
     # LLM / embedding runtime
     "ollama>=0.4.0",                # Ollama Python client
-
     # Document processing
     "pdfplumber>=0.11.0",           # PDF text extraction
     "python-docx>=1.1.0",           # DOCX text extraction (Phase 5)
     "fpdf2>=2.8.0",                 # PDF generation (demo seed script)
     "aiofiles>=24.1.0",             # Async file I/O
-
+    # Sparse embeddings (BM25 for hybrid search)
+    "fastembed>=0.4.0",              # BM25 sparse vectors via Qdrant/bm25 model
     # AI / agent framework
     "langchain-text-splitters>=0.3.0",  # RecursiveCharacterTextSplitter
     "langgraph>=0.2.0",                 # Agent graph (Phase 3)
     "langchain-core>=0.3.0",            # Required by langgraph
     "langchain-ollama>=0.2.0",          # Ollama LangChain integration (Phase 4 RAGAS judge LLM)
-
     # Evaluation
     "ragas>=0.2.0",                 # RAG evaluation metrics (Phase 4)
 ]

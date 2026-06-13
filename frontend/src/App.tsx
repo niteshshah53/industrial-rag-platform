@@ -127,7 +127,7 @@ export default function App() {
         />
 
         <ChatInputBar
-          disabled={!selectedDoc || selectedDoc.status !== 'ready'}
+          disabled={!selectedDoc || selectedDoc.status !== 'READY'}
           isLoading={isLoading}
           onSend={(text) => sendMessage(text, selectedDoc?.document_id)}
           onDocumentUploaded={setSelectedDoc}

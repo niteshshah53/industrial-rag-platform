@@ -76,7 +76,7 @@ export default function ChatInputBar({
     const doc = docs.find((d) => d.document_id === uploadedDocId)
     if (!doc) return
 
-    if (doc.status === 'ready') {
+    if (doc.status === 'READY') {
       setChip({ filename: doc.filename, status: 'ready', message: 'Ready' })
       onDocumentUploaded(doc)
       setUploadedDocId(null)
@@ -84,7 +84,7 @@ export default function ChatInputBar({
       return () => clearTimeout(timer)
     }
 
-    if (doc.status === 'failed') {
+    if (doc.status === 'FAILED') {
       setChip({ filename: doc.filename, status: 'error', message: doc.error_message ?? 'Processing failed' })
       setUploadedDocId(null)
     }

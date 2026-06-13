@@ -1,33 +1,28 @@
 """
 Semantic retrieval from the Qdrant vector store.
 
-The Retriever is the RAG layer component responsible for:
-  1. Embedding the question using OllamaEmbedder
-  2. Searching Qdrant for the closest chunk vectors
-  3. Applying score threshold and optional document filter
+Supports two search modes:
+  - "dense":  cosine vector similarity only (original behavior)
+  - "hybrid": BM25 sparse + dense, fused via Qdrant RRF (default)
 
-Design decisions:
-  - The Retriever is a thin coordinator between OllamaEmbedder and
-    QdrantRepository. It does not contain search logic itself — that
-    lives in QdrantRepository.search().
-  - Synchronous — callers (QueryService) run this in run_in_executor.
-  - Accepts both embedder and repository as constructor arguments so
-    unit tests can inject mocks without touching the Ollama or Qdrant clients.
+When search_mode="hybrid" and a SparseEmbedder is available, the question is
+embedded with both OllamaEmbedder (dense) and SparseEmbedder (BM25). Qdrant
+fuses both result sets using Reciprocal Rank Fusion, improving recall for
+queries containing exact keywords (part numbers, error codes, model names).
 
-Usage:
-    retriever = Retriever(embedder=embedder, qdrant_repo=qdrant_repo)
-    chunks = retriever.retrieve(
-        question="What is the max operating temperature?",
-        top_k=5,
-        score_threshold=0.6,
-        document_id_filter=None,
-    )
+Falls back to dense-only search when SparseEmbedder is not provided or when
+the caller explicitly sets search_mode="dense".
 """
+
+from typing import TYPE_CHECKING
 
 from app.core.logging import get_logger
 from app.core.models import RetrievedChunk
 from app.db.qdrant_repository import QdrantRepository
 from app.rag.embedder import OllamaEmbedder
+
+if TYPE_CHECKING:
+    from app.rag.sparse_embedder import SparseEmbedder
 
 logger = get_logger(__name__)
 
@@ -37,13 +32,20 @@ class Retriever:
     Embeds a question and retrieves the most relevant chunks from Qdrant.
 
     Args:
-        embedder: OllamaEmbedder instance for question embedding.
+        embedder: OllamaEmbedder instance for dense question embedding.
         qdrant_repo: QdrantRepository instance for vector search.
+        sparse_embedder: Optional SparseEmbedder for BM25 hybrid search.
     """
 
-    def __init__(self, embedder: OllamaEmbedder, qdrant_repo: QdrantRepository) -> None:
+    def __init__(
+        self,
+        embedder: OllamaEmbedder,
+        qdrant_repo: QdrantRepository,
+        sparse_embedder: "SparseEmbedder | None" = None,
+    ) -> None:
         self._embedder = embedder
         self._qdrant_repo = qdrant_repo
+        self._sparse_embedder = sparse_embedder
 
     def retrieve(
         self,
@@ -51,6 +53,7 @@ class Retriever:
         top_k: int,
         score_threshold: float,
         document_id_filter: str | None = None,
+        search_mode: str = "hybrid",
     ) -> list[RetrievedChunk]:
         """
         Embed the question and return chunks above the score threshold.
@@ -60,6 +63,7 @@ class Retriever:
             top_k: Maximum number of chunks to return.
             score_threshold: Minimum cosine similarity [0, 1].
             document_id_filter: If set, restrict search to this document.
+            search_mode: "hybrid" (BM25 + dense RRF) or "dense" (cosine only).
 
         Returns:
             List of RetrievedChunk objects sorted by score descending.
@@ -68,18 +72,31 @@ class Retriever:
         Raises:
             ServiceUnavailableError: If Ollama or Qdrant are unreachable.
         """
-        question_vector = self._embedder.embed_query(question)
+        dense_vector = self._embedder.embed_query(question)
 
-        chunks = self._qdrant_repo.search(
-            vector=question_vector,
-            top_k=top_k,
-            score_threshold=score_threshold,
-            document_id_filter=document_id_filter,
-        )
+        use_hybrid = search_mode == "hybrid" and self._sparse_embedder is not None
+
+        if use_hybrid:
+            sparse_vector = self._sparse_embedder.embed_query(question)  # type: ignore[union-attr]
+            chunks = self._qdrant_repo.hybrid_search(
+                dense_vector=dense_vector,
+                sparse_vector=sparse_vector,
+                top_k=top_k,
+                score_threshold=score_threshold,
+                document_id_filter=document_id_filter,
+            )
+        else:
+            chunks = self._qdrant_repo.search(
+                vector=dense_vector,
+                top_k=top_k,
+                score_threshold=score_threshold,
+                document_id_filter=document_id_filter,
+            )
 
         logger.debug(
             "Retrieval complete",
             extra={
+                "search_mode": "hybrid" if use_hybrid else "dense",
                 "question_length": len(question),
                 "top_k": top_k,
                 "score_threshold": score_threshold,

@@ -26,6 +26,8 @@ Usage:
     final_state = graph.invoke(initial_state)
 """
 
+from typing import TYPE_CHECKING
+
 import ollama
 from langgraph.graph import END, StateGraph
 
@@ -37,6 +39,9 @@ from app.agents.state import RAGState
 from app.core.config import Settings
 from app.db.qdrant_repository import QdrantRepository
 from app.rag.embedder import OllamaEmbedder
+
+if TYPE_CHECKING:
+    from app.rag.sparse_embedder import SparseEmbedder
 
 # ── Routing functions ─────────────────────────────────────────────────────────
 
@@ -75,6 +80,7 @@ def build_rag_graph(
     qdrant_repo: QdrantRepository,
     llm_client: ollama.Client,
     settings: Settings,
+    sparse_embedder: "SparseEmbedder | None" = None,
 ):
     """
     Build and compile the RAG LangGraph StateGraph.
@@ -85,15 +91,20 @@ def build_rag_graph(
     clients or settings.
 
     Args:
-        embedder:    OllamaEmbedder for question embedding (retrieve node).
-        qdrant_repo: QdrantRepository for vector search (retrieve node).
-        llm_client:  Synchronous Ollama client for LLM generation (generate node).
-        settings:    Application settings; provides llm_model and max_context_chars.
+        embedder:        OllamaEmbedder for dense question embedding (retrieve node).
+        qdrant_repo:     QdrantRepository for vector search (retrieve node).
+        llm_client:      Synchronous Ollama client for LLM generation (generate node).
+        settings:        Application settings; provides llm_model and max_context_chars.
+        sparse_embedder: Optional SparseEmbedder for BM25 hybrid search.
 
     Returns:
         Compiled LangGraph StateGraph ready for .invoke().
     """
-    retrieve = build_retrieve_node(embedder=embedder, qdrant_repo=qdrant_repo)
+    retrieve = build_retrieve_node(
+        embedder=embedder,
+        qdrant_repo=qdrant_repo,
+        sparse_embedder=sparse_embedder,
+    )
     assemble = build_assemble_node(max_context_chars=settings.max_context_chars)
     generate = build_generate_node(llm_client=llm_client, llm_model=settings.llm_model)
     cite = build_cite_node()

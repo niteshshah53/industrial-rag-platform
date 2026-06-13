@@ -1,6 +1,5 @@
 import type {
   DocumentRecord,
-  DocumentStatus,
   UploadResponse,
   QueryRequest,
   QueryResponse,
@@ -25,32 +24,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-// The backend returns status values in UPPERCASE (e.g. "READY").
-// Normalize to lowercase so component comparisons work correctly.
-function normalizeDoc(doc: DocumentRecord): DocumentRecord {
-  return { ...doc, status: doc.status.toLowerCase() as DocumentStatus }
-}
-
 // ── Document endpoints ─────────────────────────────────────────────────────────
 
 export async function uploadDocument(file: File): Promise<UploadResponse> {
   const form = new FormData()
   form.append('file', file)
-  const res = await request<UploadResponse>('/v1/documents/upload', {
+  return request<UploadResponse>('/v1/documents/upload', {
     method: 'POST',
     body: form,
   })
-  return { ...res, status: res.status.toLowerCase() as DocumentStatus }
 }
 
 export async function listDocuments(): Promise<DocumentRecord[]> {
   const res = await request<{ documents: DocumentRecord[]; total: number }>('/v1/documents')
-  return res.documents.map(normalizeDoc)
+  return res.documents
 }
 
 export async function getDocument(id: string): Promise<DocumentRecord> {
-  const doc = await request<DocumentRecord>(`/v1/documents/${id}`)
-  return normalizeDoc(doc)
+  return request<DocumentRecord>(`/v1/documents/${id}`)
 }
 
 export async function deleteDocument(id: string): Promise<void> {

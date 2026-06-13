@@ -260,6 +260,14 @@ class QueryRequest(BaseModel):
             "Defaults to False to keep production responses compact."
         ),
     )
+    search_mode: Literal["dense", "hybrid"] = Field(
+        default="hybrid",
+        description=(
+            "Retrieval strategy. 'hybrid' fuses BM25 sparse + dense vectors via RRF — "
+            "better for keyword-heavy queries (part numbers, error codes, model names). "
+            "'dense' uses cosine similarity only."
+        ),
+    )
     conversation_history: list[ConversationTurn] = Field(
         default_factory=list,
         description=(

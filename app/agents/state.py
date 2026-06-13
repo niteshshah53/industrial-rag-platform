@@ -57,6 +57,8 @@ class RAGState(TypedDict, total=False):
     document_id: str | None
     request_id: str
     start_time: float
+    # "hybrid" uses BM25 + dense RRF; "dense" uses cosine similarity only.
+    search_mode: str
     # Prior turns as list of {"role": "user"|"assistant", "content": "..."}.
     # Empty list when this is the first message in a session.
     conversation_history: list[dict]

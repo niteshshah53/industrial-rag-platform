@@ -73,6 +73,7 @@ def get_qdrant_repository(settings: Settings = Depends(get_settings)):
 
 
 def get_ingestion_service(
+    request: Request,
     settings: Settings = Depends(get_settings),
     doc_repo=Depends(get_document_repository),
     qdrant_repo=Depends(get_qdrant_repository),
@@ -87,10 +88,12 @@ def get_ingestion_service(
     """
     from app.services.ingestion_service import IngestionService
 
+    sparse_embedder = getattr(request.app.state, "sparse_embedder", None)
     return IngestionService(
         settings=settings,
         doc_repo=doc_repo,
         qdrant_repo=qdrant_repo,
+        sparse_embedder=sparse_embedder,
     )
 
 
@@ -119,4 +122,5 @@ def get_query_service(request: Request):
         ollama_base_url=getattr(state, "ollama_base_url", "http://localhost:11434"),
         llm_model=getattr(state, "llm_model", "llama3.2:3b"),
         max_context_chars=getattr(state, "max_context_chars", 8000),
+        sparse_embedder=getattr(state, "sparse_embedder", None),
     )

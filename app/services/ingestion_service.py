@@ -35,6 +35,7 @@ import hashlib
 import uuid
 from datetime import UTC, datetime
 from functools import partial
+from typing import TYPE_CHECKING
 
 from app.core.config import Settings
 from app.core.exceptions import (
@@ -49,6 +50,9 @@ from app.db.qdrant_repository import QdrantRepository
 from app.rag.chunker import DocumentChunker
 from app.rag.embedder import OllamaEmbedder
 from app.rag.extractor import get_extractor
+
+if TYPE_CHECKING:
+    from app.rag.sparse_embedder import SparseEmbedder
 
 logger = get_logger(__name__)
 
@@ -68,10 +72,12 @@ class IngestionService:
         settings: Settings,
         doc_repo: DocumentRepository,
         qdrant_repo: QdrantRepository,
+        sparse_embedder: "SparseEmbedder | None" = None,
     ) -> None:
         self._settings = settings
         self._doc_repo = doc_repo
         self._qdrant_repo = qdrant_repo
+        self._sparse_embedder = sparse_embedder
         self._semaphore = asyncio.Semaphore(settings.ingestion_concurrency)
 
     # ── Public API ─────────────────────────────────────────────────────────────
@@ -241,7 +247,7 @@ class IngestionService:
             if not chunks:
                 raise ValueError("Chunker produced zero chunks — document may be empty.")
 
-            # Step 3: Embed
+            # Step 3: Dense embed
             embedder = OllamaEmbedder(
                 base_url=self._settings.ollama_base_url,
                 model=self._settings.embedding_model,
@@ -251,8 +257,18 @@ class IngestionService:
             embedded_chunks = [c for c, _ in chunk_vector_pairs]
             vectors = [v for _, v in chunk_vector_pairs]
 
-            # Step 4: Upsert to Qdrant
-            self._qdrant_repo.upsert_chunks(embedded_chunks, vectors)
+            # Step 3b: Sparse embed (BM25) for hybrid search
+            sparse_vectors = None
+            if self._sparse_embedder is not None:
+                texts = [chunk.text for chunk in embedded_chunks]
+                sparse_vectors = self._sparse_embedder.embed_texts(texts)
+                logger.debug(
+                    "Sparse vectors generated",
+                    extra={"document_id": document_id, "count": len(sparse_vectors)},
+                )
+
+            # Step 4: Upsert to Qdrant (dense + sparse when available)
+            self._qdrant_repo.upsert_chunks(embedded_chunks, vectors, sparse_vectors)
 
             # Step 5: Mark READY
             self._doc_repo.update_status(

@@ -16,7 +16,7 @@ export function useDocuments() {
     refetchInterval: (query) => {
       const docs: DocumentRecord[] = query.state.data ?? []
       const hasActive = docs.some(
-        (d) => d.status === 'pending' || d.status === 'processing',
+        (d) => d.status === 'PENDING' || d.status === 'PROCESSING',
       )
       return hasActive ? 2_000 : false
     },

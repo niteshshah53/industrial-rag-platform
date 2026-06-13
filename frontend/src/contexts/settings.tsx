@@ -7,6 +7,7 @@ const DEFAULTS: AppSettings = {
   topK: 5,
   threshold: 0.3,
   theme: 'system',
+  searchMode: 'hybrid',
 }
 
 function load(): AppSettings {
@@ -31,6 +32,7 @@ interface SettingsContextValue {
   setTopK: (v: number) => void
   setThreshold: (v: number) => void
   setTheme: (v: Theme) => void
+  setSearchMode: (v: 'dense' | 'hybrid') => void
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null)
@@ -55,6 +57,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setTopK: (topK) => update({ topK }),
         setThreshold: (threshold) => update({ threshold }),
         setTheme: (theme) => update({ theme }),
+        setSearchMode: (searchMode) => update({ searchMode }),
       }}
     >
       {children}

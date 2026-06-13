@@ -20,10 +20,10 @@ function formatDate(iso: string): string {
 }
 
 const STATUS_CFG: Record<DocumentStatus, { dot: string; label: string; text: string }> = {
-  ready:      { dot: 'bg-green-500',               label: 'Ready',      text: 'text-green-600 dark:text-green-400' },
-  processing: { dot: 'bg-blue-400 animate-pulse',  label: 'Processing', text: 'text-blue-500 dark:text-blue-400' },
-  pending:    { dot: 'bg-yellow-400',              label: 'Pending',    text: 'text-yellow-600 dark:text-yellow-400' },
-  failed:     { dot: 'bg-red-500',                label: 'Failed',     text: 'text-red-500' },
+  READY:      { dot: 'bg-green-500',               label: 'Ready',      text: 'text-green-600 dark:text-green-400' },
+  PROCESSING: { dot: 'bg-blue-400 animate-pulse',  label: 'Processing', text: 'text-blue-500 dark:text-blue-400' },
+  PENDING:    { dot: 'bg-yellow-400',              label: 'Pending',    text: 'text-yellow-600 dark:text-yellow-400' },
+  FAILED:     { dot: 'bg-red-500',                label: 'Failed',     text: 'text-red-500' },
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -253,7 +253,7 @@ export default function DocumentsPanel({
                     <span className={`flex items-center gap-1 text-xs font-medium ${cfg.text}`}>
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
                       {cfg.label}
-                      {doc.status === 'ready' && doc.chunk_count > 0 && (
+                      {doc.status === 'READY' && doc.chunk_count > 0 && (
                         <span className="text-gray-400 font-normal ml-0.5">
                           ({doc.chunk_count} chunks)
                         </span>

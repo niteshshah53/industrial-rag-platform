@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from app.agents.state import RAGState
     from app.db.qdrant_repository import QdrantRepository
     from app.rag.embedder import OllamaEmbedder
+    from app.rag.sparse_embedder import SparseEmbedder
 
 from app.agents.nodes.cite import _build_citations
 from app.core.logging import get_logger
@@ -85,6 +86,7 @@ class QueryService:
         ollama_base_url: str = "http://localhost:11434",
         llm_model: str = "llama3.2:3b",
         max_context_chars: int = 8000,
+        sparse_embedder: "SparseEmbedder | None" = None,
     ) -> None:
         self._graph = graph
         self._embedder = embedder
@@ -92,6 +94,7 @@ class QueryService:
         self._ollama_base_url = ollama_base_url
         self._llm_model = llm_model
         self._max_context_chars = max_context_chars
+        self._sparse_embedder = sparse_embedder
 
     # ── Blocking path (existing) ───────────────────────────────────────────────
 
@@ -132,6 +135,7 @@ class QueryService:
             "document_id": request.document_id,
             "request_id": request_id,
             "start_time": start_time,
+            "search_mode": request.search_mode,
             "conversation_history": [t.model_dump() for t in request.conversation_history],
         }
 
@@ -214,7 +218,7 @@ class QueryService:
             loop = asyncio.get_event_loop()
             retrieved_chunks, included_chunks, context_string = await loop.run_in_executor(
                 None,
-                partial(self._retrieve_and_assemble, request, request_id),
+                partial(self._retrieve_and_assemble, request, request_id, request.search_mode),
             )
         except Exception as exc:
             logger.warning(
@@ -316,6 +320,7 @@ class QueryService:
         self,
         request: QueryRequest,
         request_id: str,
+        search_mode: str = "hybrid",
     ) -> tuple[list[RetrievedChunk], list[RetrievedChunk], str]:
         """
         Run retrieval and assembly synchronously (called from run_in_executor).
@@ -324,12 +329,17 @@ class QueryService:
         """
         from app.rag.retriever import Retriever
 
-        retriever = Retriever(embedder=self._embedder, qdrant_repo=self._qdrant_repo)
+        retriever = Retriever(
+            embedder=self._embedder,
+            qdrant_repo=self._qdrant_repo,
+            sparse_embedder=self._sparse_embedder,
+        )
         retrieved_chunks = retriever.retrieve(
             question=request.question,
             top_k=request.top_k,
             score_threshold=request.score_threshold,
             document_id_filter=request.document_id,
+            search_mode=search_mode,
         )
 
         if not retrieved_chunks:

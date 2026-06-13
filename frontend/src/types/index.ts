@@ -1,7 +1,7 @@
 // TypeScript mirrors of the backend Pydantic models.
 // Keep in sync with app/core/models.py.
 
-export type DocumentStatus = 'pending' | 'processing' | 'ready' | 'failed'
+export type DocumentStatus = 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED'
 
 export interface DocumentRecord {
   document_id: string
@@ -47,6 +47,7 @@ export interface QueryRequest {
   top_k?: number
   score_threshold?: number
   document_id?: string
+  search_mode?: 'dense' | 'hybrid'
   conversation_history?: ConversationTurn[]
 }
 
@@ -80,4 +81,5 @@ export interface AppSettings {
   topK: number
   threshold: number
   theme: Theme
+  searchMode: 'dense' | 'hybrid'
 }

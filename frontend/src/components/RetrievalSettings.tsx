@@ -35,10 +35,37 @@ function SliderRow({ label, hint, min, max, step, value, display, onChange }: Sl
 }
 
 export default function RetrievalSettings() {
-  const { settings, setTopK, setThreshold } = useSettings()
+  const { settings, setTopK, setThreshold, setSearchMode } = useSettings()
 
   return (
     <div className="space-y-6">
+      {/* Search mode toggle */}
+      <div>
+        <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">Search Mode</p>
+        <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+          {(['hybrid', 'dense'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setSearchMode(mode)}
+              className={`
+                flex-1 py-2 text-sm font-medium transition-colors
+                ${settings.searchMode === mode
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                }
+              `}
+            >
+              {mode === 'hybrid' ? 'Hybrid (BM25 + Vector)' : 'Dense (Vector only)'}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-gray-400">
+          {settings.searchMode === 'hybrid'
+            ? 'Combines keyword matching (BM25) with semantic similarity — better for technical terms'
+            : 'Pure vector similarity — better for conceptual / paraphrase queries'}
+        </p>
+      </div>
+
       <SliderRow
         label="Top Results"
         hint="Number of document chunks retrieved per query"
