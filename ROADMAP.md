@@ -1,4 +1,4 @@
-# Project Roadmap
+﻿# Project Roadmap
 # Industrial Document Intelligence Platform
 
 ---
@@ -19,9 +19,7 @@ This roadmap breaks the project into eight sequential phases. Each phase produce
 | 5 | Production Hardening | ✅ Complete | Multi-format support (PDF/DOCX/TXT), README, portfolio polish |
 | 6 | Web Frontend | ✅ Complete | ChatGPT-style React UI — upload documents, chat, view citations |
 | 7 | Production Enhancements | ✅ Complete | Streaming, conversation memory, hybrid search, multi-doc collections |
-| 8 | Chat Experience Parity | 📋 Planned | UX polish — layout, message actions, stop button, citation redesign |
-| 9 | Production Features | 📋 Planned | Reranking, source highlighting, document compare, auto summaries |
-| 10 | Enterprise | 📋 Planned | Multi-user auth, shared workspaces, analytics, admin panel |
+| 8 | Chat Experience Parity | ✅ Complete | UX polish — layout, message actions, stop button, citation redesign |
 
 ---
 
@@ -1327,394 +1325,37 @@ frontend/src/
 
 ### Phase 8 Milestones
 
-| Milestone | Description | Exit Gate |
+| Milestone | Description | Status |
 |---|---|---|
-| M8.1 | Layout and width fix | Messages occupy ≥70% width; Q→A visually paired |
-| M8.2 | Citation card redesign | Snippet, %, expandable — no regression |
-| M8.3 | Latency UX | No prominent time display; metadata row in place |
-| M8.4 | Message action bar | Edit, Copy, Regenerate, Delete on hover for both roles |
-| M8.5 | Stop generation | Abort controller wired; partial saves; stopped marker |
-| M8.6 | Scroll behaviour | Auto-scroll + manual lock + jump-to-bottom |
-| M8.7 | Pin and Archive sessions | Pinned sessions stay at top; archive hides from main list |
-| M8.8 | Paste and multi-file upload | Clipboard paste triggers upload; multi-select works |
-| M8.9 | Keyboard shortcuts | Cmd+K, Cmd+Shift+C, Cmd+Shift+R, Escape all work |
+| M8.1 | Layout and width fix — `max-w-3xl` centered container, wider bubbles | ✅ |
+| M8.2 | Citation card redesign — snippet preview, % relevance, copy button | ✅ |
+| M8.3 | Latency UX — subtle metadata row `Xs · N sources` replaces prominent timer | ✅ |
+| M8.4 | Message action bar — Edit, Copy, Regenerate, 👍👎, Delete on hover | ✅ |
+| M8.5 | Stop generation — AbortController, partial save, stopped marker | ✅ |
+| M8.6 | Scroll behaviour — auto-scroll lock + jump-to-bottom FAB | ✅ |
+| M8.7 | Pin and Archive sessions — pinned stays at top; archived hidden | ✅ |
+| M8.8 | Paste and multi-file upload — clipboard paste + sequential file queue | ✅ |
+| M8.9 | Keyboard shortcuts — Cmd+K, Cmd+Shift+C, Cmd+Shift+R, Escape | ✅ |
 
 ### Skills Demonstrated (New in Phase 8)
 
 - AbortController for cancellable fetch streams
-- Scroll event handling with IntersectionObserver for auto-scroll lock
-- Clipboard API for paste-file detection
-- React `useImperativeHandle` and controlled focus management for Edit action
-- Keyboard shortcut system with conflict-free registration
-- Chat session state extensions (pin, archive) in localStorage
-- Citation card micro-interaction design
-- Metadata tooltip via `title` attribute + Radix/Floating-UI tooltip
+- Clipboard API for paste-file detection and copy actions
+- Keyboard shortcut system with conflict-free global registration
+- Chat session state extensions (pin, archive) persisted in localStorage
+- Scroll lock pattern with manual override and jump-to-bottom affordance
+- Citation card micro-interaction: copy snippet, expandable full passage
+- React controlled focus management for the Edit message action
 
 ---
 
-## Phase 9 — Production Features
+## Project Status
 
-### Goal
+The platform is **feature-complete** at Phase 8. All planned AI Engineering capabilities are implemented and working end-to-end.
 
-Add the AI capabilities that elevate the platform from a well-built RAG demo into a system that could plausibly be deployed in an industrial organisation. Each feature solves a real retrieval or productivity problem that appears in production deployments.
-
-### Feature Ranking
-
-| Feature | Impact | Effort | Priority |
-|---|---|---|---|
-| Cross-Encoder Reranking | High | Medium | 1 |
-| Source Highlighting | High | High | 2 |
-| Document Compare | Medium | Medium | 3 |
-| Auto Summaries | Medium | Low | 4 |
-| Report Generation (PDF export) | Medium | Medium | 5 |
-| Server-Side Session Persistence | Medium | High | 6 |
-
-### Step 1 — Cross-Encoder Reranking
-
-#### Goal
-
-Add a second-stage reranker after vector retrieval. The retriever fetches `top_k * 3` candidates using the existing hybrid search; a cross-encoder model scores each (query, passage) pair and re-ranks them. Only the top `top_k` results proceed to context assembly.
-
-Cross-encoders capture fine-grained relevance that embedding-based retrieval misses — particularly useful for long technical documents where multiple chunks may superficially match the query but only one is actually relevant.
-
-#### Architecture
-
-```
-Hybrid retrieval (top_k * 3 candidates)
-  └── CrossEncoder.predict([(query, chunk.text) for chunk in candidates])
-        └── Sort by cross-encoder score → take top_k
-              └── Context assembly (unchanged)
-```
-
-#### Implementation
-
-```
-app/
-  rag/
-    reranker.py                 ← CrossEncoderReranker(model_name) wrapping sentence-transformers
-  agents/
-    nodes/
-      rerank.py                 ← new node: takes retrieved_chunks → reranks → returns top_k
-    rag_graph.py                ← add rerank node between retrieve and assemble
-    state.py                    ← add reranked_chunks field
-  core/
-    config.py                   ← add RERANKER_MODEL, RERANKER_ENABLED settings
-```
-
-**Default model:** `cross-encoder/ms-marco-MiniLM-L-6-v2` (fast, 22 MB, runs CPU)
-
-#### Acceptance Criteria
-
-- [ ] Reranking is controlled by `RERANKER_ENABLED=true/false` env var (default: true)
-- [ ] When enabled, `retrieval_count` in the response reflects pre-rerank count; `context_chunks_used` reflects post-rerank
-- [ ] RAGAS scores with reranking ≥ RAGAS scores without (no regression gate)
-- [ ] Reranker cold-start (model download) happens once at startup, not per query
-- [ ] p50 latency increase ≤ 500ms compared to baseline (model runs on CPU without blocking event loop)
-
-### Step 2 — Source Highlighting
-
-#### Goal
-
-When a user receives a citation, they can click "View in document" to open a document viewer that highlights the exact passage that generated the answer.
-
-This closes the verification loop: instead of telling the user "page 7, chunk 12", the system shows them exactly where in the document the answer came from.
-
-#### Architecture
-
-```
-Frontend: PDF.js viewer in a modal/panel
-  └── highlight_rect coords stored in Qdrant payload (added at ingestion time)
-
-Backend: store bounding box / char offset of each chunk in ChunkPayload
-  └── pdfplumber word.bbox → chunk bounding boxes aggregated per chunk
-```
-
-#### Implementation
-
-```
-app/
-  rag/
-    extractor.py                ← update PDF extractor to capture char offsets and page bboxes
-  core/
-    models.py                   ← add highlight_coords: list[dict] to ChunkPayload, Citation
-  db/
-    qdrant_repository.py        ← store highlight_coords in payload at upsert time
-
-frontend/src/
-  components/
-    DocumentViewer.tsx          ← PDF.js viewer with programmatic scroll-to-highlight
-    HighlightLayer.tsx          ← canvas overlay rendering highlight rectangles
-```
-
-#### Acceptance Criteria
-
-- [ ] Clicking "View in document" on a citation opens a PDF viewer centred on the cited passage
-- [ ] Cited passage is visually highlighted (yellow overlay)
-- [ ] Multiple citations from the same document can be navigated in the same viewer
-- [ ] Documents without bbox data (ingested before this phase) show viewer without highlights, not an error
-
-### Step 3 — Document Compare
-
-#### Goal
-
-Allow users to select two documents and ask a comparative question. The system retrieves from both documents in parallel and structures the answer to explicitly compare findings across documents.
-
-Example: "How does the hydraulic pressure spec in Manual A differ from Manual B?"
-
-#### Architecture
-
-```
-Frontend: "Compare mode" toggle when two docs are selected
-  └── POST /v1/chat/stream with compare_document_ids: [id_a, id_b]
-
-Backend: retrieve top_k/2 chunks from each doc independently
-  └── Interleave results into context with [DOC A] / [DOC B] prefixes
-  └── System prompt instructs model to compare explicitly
-```
-
-#### Implementation
-
-```
-app/
-  core/models.py                ← add compare_document_ids: list[str] to QueryRequest
-  services/query_service.py     ← parallel retrieval path for compare mode
-  core/prompts.py               ← add COMPARE_SYSTEM_PROMPT
-frontend/src/
-  components/
-    SidebarDocumentSection.tsx  ← multi-select up to 2 docs for compare mode
-    ChatInputBar.tsx            ← show "Compare mode" indicator when 2 docs selected
-```
-
-#### Acceptance Criteria
-
-- [ ] Selecting two READY documents enables compare mode automatically
-- [ ] Compare queries return structured answers referencing both documents
-- [ ] Citations identify which document each passage came from
-- [ ] Single-document mode unchanged
-
-### Step 4 — Auto Summaries
-
-#### Goal
-
-When a document finishes ingestion, automatically generate a 3–5 sentence summary describing what the document is about. Show it in the DocumentsPanel and as the first message when a user selects that document.
-
-#### Architecture
-
-```
-IngestionService.run_ingestion() (after READY):
-  └── pick first 3 chunks → call Ollama → save summary to DocumentRow
-DocumentRecord:
-  └── new field: summary: str | None
-Frontend:
-  └── DocumentsPanel shows summary below metadata
-  └── When selecting a document, pre-populate first "assistant" message with summary
-```
-
-#### Implementation
-
-```
-app/
-  core/models.py                ← add summary: str | None to DocumentRecord
-  db/
-    document_repository.py      ← add summary column, update_summary() method
-  services/
-    ingestion_service.py        ← call summarise_document() after READY transition
-  rag/
-    summariser.py               ← new: takes first N chunks, calls Ollama, returns summary
-frontend/src/
-  components/
-    DocumentsPanel.tsx          ← show summary in expanded card view
-  App.tsx                       ← inject summary as welcome message on doc select
-```
-
-#### Acceptance Criteria
-
-- [ ] Every newly ingested document gets a summary within 30 seconds of reaching READY
-- [ ] Summary is visible in the DocumentsPanel below the document filename
-- [ ] Selecting a document with a summary shows it as the first assistant message
-- [ ] Previously ingested documents (no summary) work normally — summary field is optional
-
-### Step 5 — Report Generation
-
-#### Goal
-
-Allow users to export a conversation as a formatted PDF report including: the questions asked, the AI answers, and the citations with source passages. Useful for engineers who need to document findings from technical documents.
-
-#### Architecture
-
-```
-Frontend: "Export as PDF" button in chat header
-  └── POST /v1/report/generate with session messages + citations
-        └── Backend renders HTML → headless Chromium (via playwright) → PDF
-              └── Returns PDF as binary response
-```
-
-#### Implementation
-
-```
-app/
-  api/v1/routers/
-    reports.py                  ← POST /v1/report/generate → StreamingResponse(PDF)
-  services/
-    report_service.py           ← builds HTML template + invokes playwright
-  templates/
-    report.html                 ← Jinja2 HTML template (print-optimised)
-frontend/src/
-  components/
-    ChatWindow.tsx              ← "Export" button in header
-  api/client.ts                 ← downloadReport(messages) → triggers browser download
-```
-
-#### Acceptance Criteria
-
-- [ ] Clicking "Export as PDF" downloads a PDF within 5 seconds
-- [ ] PDF includes: conversation title, all Q&A pairs, citations with document name and page
-- [ ] PDF is formatted for A4 / Letter print
-- [ ] Report includes a timestamp and the platform name in the header
-
-### Phase 9 Milestones
-
-| Milestone | Step | Description | Exit Gate |
-|---|---|---|---|
-| M9.1 | 1 | Reranker integrated | RAGAS scores ≥ baseline; latency increase ≤ 500ms |
-| M9.2 | 2 | PDF viewer working | Citation opens viewer at correct page |
-| M9.3 | 2 | Passage highlighting | Cited passage highlighted in yellow in viewer |
-| M9.4 | 3 | Compare mode | Dual-doc retrieval returns structured comparison answer |
-| M9.5 | 4 | Auto summaries | Every new document gets a summary; shown in UI |
-| M9.6 | 5 | Report export | PDF with Q&A and citations downloads correctly |
-
-### Skills Demonstrated (New in Phase 9)
-
-- Cross-encoder reranking (sentence-transformers, CPU inference)
-- Two-stage retrieval pipeline (embed → retrieve → rerank)
-- PDF text coordinate extraction (pdfplumber bounding boxes)
-- PDF.js in React for document viewing
-- Parallel retrieval for multi-document compare
-- Automated document summarisation at ingestion time
-- Jinja2 templating for report generation
-- Playwright headless PDF rendering
+Phases 9 (Production Features — reranking, source highlighting, document compare) and 10 (Enterprise — auth, workspaces, analytics) were scoped during planning but are not being implemented. This is a local hobby portfolio project and the existing feature set fully demonstrates the target skills.
 
 ---
 
-## Phase 10 — Enterprise
 
-### Goal
-
-Make the platform usable by teams rather than individual users. Add authentication, role-based access, shared workspaces, and the observability tooling that an operations team needs to monitor and manage a production deployment.
-
-This phase is explicitly optional for the portfolio — the earlier phases demonstrate the AI engineering skills. Phase 10 is relevant only if targeting enterprise AI engineering roles where multi-user systems are a core requirement.
-
-### Features
-
-#### Priority 1 — Multi-User Authentication
-
-- JWT-based authentication (FastAPI + python-jose)
-- User registration and login endpoints
-- Protected routes: all document and chat endpoints require valid JWT
-- User-scoped data: documents and sessions belong to a user, not global
-- Logout and token refresh
-
-#### Priority 2 — Shared Workspaces
-
-- Users can create named workspaces
-- Invite other users to a workspace
-- Workspace-scoped document collections
-- Role-based access: Owner / Editor / Viewer
-- All chat queries within a workspace search the workspace's documents
-
-#### Priority 3 — Analytics Dashboard
-
-- `/v1/admin/analytics` endpoint returning:
-  - Total documents by status
-  - Query count per day (last 30 days)
-  - Average, p50, p95 query latency
-  - Top 10 most-queried documents
-  - Error rate by endpoint
-- Simple admin React page rendering the analytics as charts
-
-#### Priority 4 — Usage Tracking
-
-- Per-user query count
-- Token usage tracking (estimated from answer length)
-- Rate limiting: configurable queries-per-minute per user
-- Usage alerts: email/webhook when a user exceeds their quota
-
-#### Priority 5 — Admin Panel
-
-- User management UI (list, suspend, delete users)
-- Document moderation (delete any user's document)
-- System health dashboard (service status, queue depth)
-- Configuration editor (change model settings without restart)
-
-### Phase 10 Milestones
-
-| Milestone | Description | Exit Gate |
-|---|---|---|
-| M10.1 | Auth working | Login/logout; all routes protected |
-| M10.2 | User-scoped data | Documents and sessions isolated per user |
-| M10.3 | Workspaces | Create workspace, invite user, scope queries |
-| M10.4 | Analytics endpoint | `/v1/admin/analytics` returns correct metrics |
-| M10.5 | Admin panel | User list, suspend, document moderation working |
-
-### Skills Demonstrated (New in Phase 10)
-
-- JWT authentication in FastAPI
-- Role-based access control (RBAC)
-- Multi-tenant data isolation
-- User management API
-- Time-series metrics aggregation
-- Rate limiting middleware
-- React admin dashboard with chart libraries
-
----
-
-## Updated Milestone Summary
-
-### Phase 8 Milestones
-
-| Milestone | Description |
-|---|---|
-| M8.1 | Layout and width fix — messages ≥70% width, Q→A visually paired |
-| M8.2 | Citation card redesign — snippet, %, expandable |
-| M8.3 | Latency UX — metadata row replaces prominent timer |
-| M8.4 | Message action bar — Edit, Copy, Regenerate, Delete on hover |
-| M8.5 | Stop generation — AbortController, partial save, stopped marker |
-| M8.6 | Scroll behaviour — auto-scroll + lock + jump-to-bottom |
-| M8.7 | Pin and Archive sessions |
-| M8.8 | Paste and multi-file upload |
-| M8.9 | Keyboard shortcuts — Cmd+K, Cmd+Shift+C, Cmd+Shift+R |
-
-### Phase 9 Milestones
-
-| Milestone | Description |
-|---|---|
-| M9.1 | Cross-encoder reranker integrated and benchmarked |
-| M9.2 | PDF viewer in citation panel |
-| M9.3 | Passage highlighting in viewer |
-| M9.4 | Document compare mode |
-| M9.5 | Auto summaries on ingestion |
-| M9.6 | PDF report export |
-
----
-
-## Phase Exit Gates (Updated)
-
-### Before starting Phase 8
-- [x] All Phase 7 acceptance criteria pass
-- [x] Streaming, conversation memory, hybrid search, and collections all working
-- [x] No TypeScript errors; `make lint` passes
-
-### Before starting Phase 9
-- [ ] All Phase 8 acceptance criteria pass
-- [ ] Chat action bar, stop generation, and scroll behaviour fully working
-- [ ] No browser console errors during normal chat flow
-
-### Before starting Phase 10
-- [ ] Phase 9 reranking and source highlighting complete
-- [ ] RAGAS scores still meet Phase 4 targets (≥0.80 Faithfulness, ≥0.75 Recall, ≥0.80 Relevancy)
-- [ ] p50 query latency with reranking ≤ 5000ms
-
----
-
-*Phase 7 completed: 2026-06-14*
-*Phases 8–10 planned: 2026-06-14*
+*Phases 0–8 completed: 2026-06-14*
