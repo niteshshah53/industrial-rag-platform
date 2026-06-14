@@ -47,34 +47,25 @@ function titleFromMessage(content: string): string {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-/**
- * Manages chat sessions and messages.
- *
- * Session list and messages are persisted to localStorage so they survive page
- * refreshes. sendMessage uses the SSE streaming endpoint so tokens appear in
- * the UI as they are generated.
- */
 export function useChat() {
   const [sessions, setSessions] = useState<ChatSession[]>(readSessions)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
     const stored = readSessions()
     return stored.length > 0 ? stored[0].id : null
   })
-  // Tracks whether a streaming request is in-flight for the active session.
   const [isActive, setIsActive] = useState(false)
 
   const sessionsRef = useRef(sessions)
   useEffect(() => { sessionsRef.current = sessions }, [sessions])
+
+  // Tracks the AbortController for the current streaming request.
+  const abortRef = useRef<AbortController | null>(null)
 
   const messages: ChatMessage[] =
     sessions.find((s) => s.id === activeSessionId)?.messages ?? []
 
   // ── Internal updater ───────────────────────────────────────────────────────
 
-  /**
-   * Apply an updater to one session's messages.
-   * Pass persist=false during streaming to skip localStorage writes until done.
-   */
   const patchSessionMessages = useCallback(
     (sessionId: string, updater: (msgs: ChatMessage[]) => ChatMessage[], persist = true) => {
       setSessions((prev) => {
@@ -138,10 +129,63 @@ export function useChat() {
     })
   }, [])
 
+  const pinSession = useCallback((id: string) => {
+    setSessions((prev) => {
+      const next = prev.map((s) => s.id === id ? { ...s, isPinned: !s.isPinned } : s)
+      writeSessions(next)
+      return next
+    })
+  }, [])
+
+  const archiveSession = useCallback((id: string) => {
+    setSessions((prev) => {
+      const next = prev.map((s) => s.id === id ? { ...s, isArchived: !s.isArchived, isPinned: false } : s)
+      writeSessions(next)
+      return next
+    })
+    // If we just archived the active session, switch to next available
+    setActiveSessionId((prev) => {
+      if (prev !== id) return prev
+      const remaining = sessionsRef.current.filter((s) => s.id !== id && !s.isArchived)
+      return remaining.length > 0 ? remaining[0].id : null
+    })
+  }, [])
+
   const searchSessions = useCallback((query: string): ChatSession[] => {
     if (!query.trim()) return sessionsRef.current
     const q = query.toLowerCase()
     return sessionsRef.current.filter((s) => s.title.toLowerCase().includes(q))
+  }, [])
+
+  // ── Message operations ─────────────────────────────────────────────────────
+
+  const deleteMessage = useCallback((msgId: string) => {
+    if (!activeSessionId) return
+    patchSessionMessages(activeSessionId, (msgs) => msgs.filter((m) => m.id !== msgId))
+  }, [activeSessionId, patchSessionMessages])
+
+  /** Delete msgId and every message after it in the current session. */
+  const truncateFrom = useCallback((msgId: string) => {
+    if (!activeSessionId) return
+    patchSessionMessages(activeSessionId, (msgs) => {
+      const idx = msgs.findIndex((m) => m.id === msgId)
+      return idx >= 0 ? msgs.slice(0, idx) : msgs
+    })
+  }, [activeSessionId, patchSessionMessages])
+
+  const reactToMessage = useCallback((msgId: string, reaction: 'like' | 'dislike') => {
+    if (!activeSessionId) return
+    patchSessionMessages(activeSessionId, (msgs) =>
+      msgs.map((m) =>
+        m.id === msgId ? { ...m, reaction: m.reaction === reaction ? undefined : reaction } : m
+      )
+    )
+  }, [activeSessionId, patchSessionMessages])
+
+  // ── Stop generation ────────────────────────────────────────────────────────
+
+  const stopGeneration = useCallback(() => {
+    abortRef.current?.abort()
   }, [])
 
   // ── Chat ───────────────────────────────────────────────────────────────────
@@ -150,7 +194,6 @@ export function useChat() {
     async (question: string, documentId?: string, collectionId?: string) => {
       if (!question.trim()) return
 
-      // Ensure there is an active session.
       let sid = activeSessionId
       if (!sid) {
         sid = newSessionId()
@@ -173,7 +216,6 @@ export function useChat() {
 
       const sessionId = sid
 
-      // Auto-title from the first user message.
       setSessions((prev) => {
         const session = prev.find((s) => s.id === sessionId)
         if (!session || session.title !== 'New Chat') return prev
@@ -184,8 +226,6 @@ export function useChat() {
         return next
       })
 
-      // Collect the last 6 completed messages as conversation history BEFORE
-      // patching the session (so we don't include the current turn in history).
       const MAX_HISTORY = 6
       const priorMsgs = sessionsRef.current
         .find((s) => s.id === sessionId)?.messages ?? []
@@ -210,6 +250,10 @@ export function useChat() {
       patchSessionMessages(sessionId, (msgs) => [...msgs, userMsg, loadingMsg])
       setIsActive(true)
 
+      // Create a fresh AbortController for this request.
+      const controller = new AbortController()
+      abortRef.current = controller
+
       try {
         const { topK, threshold, searchMode } = readQuerySettings()
         const payload: QueryRequest = {
@@ -224,11 +268,10 @@ export function useChat() {
 
         let gotFirstToken = false
 
-        for await (const event of streamChat(payload)) {
+        for await (const event of streamChat(payload, controller.signal)) {
           if (event.type === 'token') {
             if (!gotFirstToken) {
               gotFirstToken = true
-              // Transition: loading spinner → live streaming bubble.
               patchSessionMessages(
                 sessionId,
                 (msgs) =>
@@ -237,7 +280,7 @@ export function useChat() {
                       ? { ...m, isLoading: false, isStreaming: true, content: event.content }
                       : m
                   ),
-                false, // don't persist yet — wait until streaming is complete
+                false,
               )
             } else {
               patchSessionMessages(
@@ -268,7 +311,7 @@ export function useChat() {
                       }
                     : m
                 ),
-              true, // persist final state to localStorage
+              true,
             )
           } else if (event.type === 'error') {
             patchSessionMessages(
@@ -291,18 +334,33 @@ export function useChat() {
           }
         }
       } catch (err) {
-        const errorText = err instanceof Error ? err.message : 'Something went wrong.'
-        patchSessionMessages(
-          sessionId,
-          (msgs) =>
-            msgs.map((m) =>
-              m.id === loadingId
-                ? { id: loadingId, role: 'assistant', content: errorText, isLoading: false, isStreaming: false, isError: true }
-                : m
-            ),
-          true,
-        )
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          // User stopped generation — mark message as stopped with whatever content streamed so far.
+          patchSessionMessages(
+            sessionId,
+            (msgs) =>
+              msgs.map((m) =>
+                m.id === loadingId
+                  ? { ...m, isLoading: false, isStreaming: false, isStopped: true }
+                  : m
+              ),
+            true,
+          )
+        } else {
+          const errorText = err instanceof Error ? err.message : 'Something went wrong.'
+          patchSessionMessages(
+            sessionId,
+            (msgs) =>
+              msgs.map((m) =>
+                m.id === loadingId
+                  ? { id: loadingId, role: 'assistant', content: errorText, isLoading: false, isStreaming: false, isError: true }
+                  : m
+              ),
+            true,
+          )
+        }
       } finally {
+        abortRef.current = null
         setIsActive(false)
       }
     },
@@ -317,6 +375,7 @@ export function useChat() {
     messages,
     sendMessage,
     clearMessages,
+    stopGeneration,
     isLoading: isActive,
     sessions,
     activeSessionId,
@@ -324,6 +383,11 @@ export function useChat() {
     loadSession,
     deleteSession,
     renameSession,
+    pinSession,
+    archiveSession,
     searchSessions,
+    deleteMessage,
+    truncateFrom,
+    reactToMessage,
   }
 }

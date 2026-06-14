@@ -1,8 +1,20 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
-import { Plus, Send, Loader2, FileText, X, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Plus, Send, Loader2, FileText, X, CheckCircle2, AlertCircle, Square } from 'lucide-react'
 import UploadPopover from './UploadPopover'
 import { useUploadDocument, useDocuments } from '../hooks/useDocuments'
 import type { DocumentRecord } from '../types'
+
+const ACCEPTED_EXTS = new Set(['pdf', 'docx', 'txt'])
+const ACCEPTED_MIME = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+])
+
+function isValidFile(file: File): boolean {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  return ACCEPTED_EXTS.has(ext) || ACCEPTED_MIME.has(file.type)
+}
 
 type ChipStatus = 'uploading' | 'processing' | 'ready' | 'error'
 
@@ -13,13 +25,11 @@ interface Chip {
 }
 
 interface Props {
-  /** True when no ready document is selected — disables textarea + send, not the + button. */
   disabled: boolean
   isLoading: boolean
   onSend: (text: string) => void
-  /** Called once the newly uploaded document has finished processing and is ready. */
+  onStop?: () => void
   onDocumentUploaded: (doc: DocumentRecord) => void
-  /** Pre-fills the textarea (e.g. from an example prompt card). Consumed once applied. */
   suggestedInput?: string
   onSuggestConsumed?: () => void
 }
@@ -28,6 +38,7 @@ export default function ChatInputBar({
   disabled,
   isLoading,
   onSend,
+  onStop,
   onDocumentUploaded,
   suggestedInput,
   onSuggestConsumed,
@@ -39,16 +50,18 @@ export default function ChatInputBar({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const plusWrapperRef = useRef<HTMLDivElement>(null)
+  // Queue of files waiting to be uploaded after the current one finishes.
+  const uploadQueueRef = useRef<File[]>([])
+  const isUploadingRef = useRef(false)
 
   const { mutate: upload } = useUploadDocument()
   const { data: docs } = useDocuments()
 
-  // Apply a suggested prompt from the empty-state example cards
+  // Apply a suggested prompt from empty-state example cards.
   useEffect(() => {
     if (!suggestedInput) return
     setInput(suggestedInput)
     onSuggestConsumed?.()
-    // Defer focus so the state update has rendered first
     setTimeout(() => {
       const el = textareaRef.current
       if (!el) return
@@ -58,7 +71,7 @@ export default function ChatInputBar({
     }, 0)
   }, [suggestedInput, onSuggestConsumed])
 
-  // Close popover when user clicks outside the + button wrapper
+  // Close popover on outside click.
   useEffect(() => {
     if (!popoverOpen) return
     function onMouseDown(e: MouseEvent) {
@@ -70,7 +83,7 @@ export default function ChatInputBar({
     return () => document.removeEventListener('mousedown', onMouseDown)
   }, [popoverOpen])
 
-  // Watch for the uploaded doc to become ready, then auto-select it
+  // Watch for the active upload to become ready / fail.
   useEffect(() => {
     if (!uploadedDocId || !docs) return
     const doc = docs.find((d) => d.document_id === uploadedDocId)
@@ -80,18 +93,30 @@ export default function ChatInputBar({
       setChip({ filename: doc.filename, status: 'ready', message: 'Ready' })
       onDocumentUploaded(doc)
       setUploadedDocId(null)
-      const timer = setTimeout(() => setChip(null), 3000)
+      isUploadingRef.current = false
+      const timer = setTimeout(() => {
+        setChip(null)
+        processQueue()
+      }, 2000)
       return () => clearTimeout(timer)
     }
 
     if (doc.status === 'FAILED') {
       setChip({ filename: doc.filename, status: 'error', message: doc.error_message ?? 'Processing failed' })
       setUploadedDocId(null)
+      isUploadingRef.current = false
+      processQueue()
     }
-  }, [docs, uploadedDocId, onDocumentUploaded])
+  }, [docs, uploadedDocId, onDocumentUploaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleFileSelected(file: File) {
-    setPopoverOpen(false)
+  function processQueue() {
+    const next = uploadQueueRef.current.shift()
+    if (!next) return
+    startUpload(next)
+  }
+
+  function startUpload(file: File) {
+    isUploadingRef.current = true
     setChip({ filename: file.name, status: 'uploading', message: 'Uploading…' })
     upload(file, {
       onSuccess: (res) => {
@@ -99,13 +124,41 @@ export default function ChatInputBar({
         setChip({ filename: file.name, status: 'processing', message: 'Processing…' })
       },
       onError: (err) => {
+        isUploadingRef.current = false
         setChip({
           filename: file.name,
           status: 'error',
           message: err instanceof Error ? err.message : 'Upload failed',
         })
+        processQueue()
       },
     })
+  }
+
+  function enqueueFiles(files: File[]) {
+    setPopoverOpen(false)
+    const valid = files.filter(isValidFile)
+    if (!valid.length) return
+    if (!isUploadingRef.current) {
+      const [first, ...rest] = valid
+      uploadQueueRef.current.push(...rest)
+      startUpload(first)
+    } else {
+      uploadQueueRef.current.push(...valid)
+    }
+  }
+
+  function handleFileSelected(file: File) {
+    enqueueFiles([file])
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(e.clipboardData.files)
+    if (files.length > 0) {
+      e.preventDefault()
+      enqueueFiles(files)
+    }
+    // If no files, allow normal text paste to proceed.
   }
 
   function handleSend() {
@@ -144,7 +197,7 @@ export default function ChatInputBar({
     <div className="shrink-0 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 pb-safe pt-3">
       {/* Upload progress chip */}
       {chip && (
-        <div className="mb-3 max-w-4xl mx-auto flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-xs">
+        <div className="mb-3 max-w-3xl mx-auto flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-xs">
           {chip.status === 'uploading' && (
             <Loader2 size={14} className="animate-spin text-indigo-600 shrink-0" />
           )}
@@ -178,7 +231,7 @@ export default function ChatInputBar({
         </div>
       )}
 
-      {/* Hint when no doc is selected and nothing is uploading */}
+      {/* Hint when no doc selected */}
       {disabled && !chip && (
         <p className="text-xs text-amber-600 dark:text-amber-400 mb-2 text-center">
           Use <strong>+</strong> to upload a document, or select one from the sidebar.
@@ -186,7 +239,7 @@ export default function ChatInputBar({
       )}
 
       {/* Input row */}
-      <div className="flex items-end gap-2 max-w-4xl mx-auto">
+      <div className="flex items-end gap-2 max-w-3xl mx-auto">
         {/* + button with upload popover */}
         <div ref={plusWrapperRef} className="relative shrink-0 self-end">
           <UploadPopover
@@ -195,7 +248,7 @@ export default function ChatInputBar({
           />
           <button
             onClick={() => setPopoverOpen((prev) => !prev)}
-            title="Upload document"
+            title="Upload document (or paste a file)"
             aria-label="Upload document"
             aria-expanded={popoverOpen}
             className="
@@ -220,11 +273,12 @@ export default function ChatInputBar({
           onChange={(e) => setInput(e.target.value)}
           onInput={handleTextareaInput}
           onKeyDown={handleKeyDown}
-          disabled={disabled || isLoading}
+          onPaste={handlePaste}
+          disabled={disabled && !isLoading}
           placeholder={
             disabled
               ? 'Upload or select a document to start chatting…'
-              : 'Ask a question… (Enter to send, Shift+Enter for newline)'
+              : 'Ask a question… (Enter to send, Shift+Enter for newline, paste a file)'
           }
           className="
             flex-1 resize-none rounded-xl
@@ -240,23 +294,36 @@ export default function ChatInputBar({
           "
         />
 
-        {/* Send button */}
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() || isLoading || disabled}
-          aria-label="Send message"
-          className="
-            shrink-0 w-10 h-10 flex items-center justify-center self-end
-            rounded-xl bg-indigo-600 text-white
-            hover:bg-indigo-700 active:scale-95 transition-all
-            disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100
-          "
-        >
-          {isLoading
-            ? <Loader2 size={16} className="animate-spin" />
-            : <Send size={16} />
-          }
-        </button>
+        {/* Send / Stop button */}
+        {isLoading ? (
+          <button
+            onClick={onStop}
+            aria-label="Stop generation"
+            title="Stop generating (Escape)"
+            className="
+              shrink-0 w-10 h-10 flex items-center justify-center self-end
+              rounded-xl bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900
+              hover:bg-gray-700 dark:hover:bg-gray-300
+              active:scale-95 transition-all
+            "
+          >
+            <Square size={14} className="fill-current" />
+          </button>
+        ) : (
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || disabled}
+            aria-label="Send message"
+            className="
+              shrink-0 w-10 h-10 flex items-center justify-center self-end
+              rounded-xl bg-indigo-600 text-white
+              hover:bg-indigo-700 active:scale-95 transition-all
+              disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100
+            "
+          >
+            <Send size={16} />
+          </button>
+        )}
       </div>
     </div>
   )

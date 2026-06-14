@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
-import { Pencil, Trash2, Check, X } from 'lucide-react'
+import { Pencil, Trash2, Check, X, Pin, Archive } from 'lucide-react'
 import type { ChatSession } from '../types'
 
 interface Props {
@@ -8,6 +8,8 @@ interface Props {
   onLoad: () => void
   onDelete: () => void
   onRename: (title: string) => void
+  onPin?: () => void
+  onArchive?: () => void
 }
 
 function timeAgo(dateStr: string): string {
@@ -22,7 +24,15 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString()
 }
 
-export default function ChatHistoryItem({ session, isActive, onLoad, onDelete, onRename }: Props) {
+export default function ChatHistoryItem({
+  session,
+  isActive,
+  onLoad,
+  onDelete,
+  onRename,
+  onPin,
+  onArchive,
+}: Props) {
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(session.title)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -84,11 +94,16 @@ export default function ChatHistoryItem({ session, isActive, onLoad, onDelete, o
       ) : (
         <>
           <div className="flex-1 min-w-0">
-            <p className="truncate text-sm leading-5">{session.title}</p>
+            <div className="flex items-center gap-1 min-w-0">
+              {session.isPinned && (
+                <Pin size={10} className="shrink-0 text-indigo-400 fill-current" />
+              )}
+              <p className="truncate text-sm leading-5">{session.title}</p>
+            </div>
             <p className="text-xs text-gray-500 leading-4">{timeAgo(session.updatedAt)}</p>
           </div>
 
-          {/* Action buttons — always visible on mobile, hover-revealed on desktop */}
+          {/* Action buttons */}
           <div
             className="flex lg:hidden lg:group-hover:flex items-center gap-0.5 shrink-0"
             onClick={(e) => e.stopPropagation()}
@@ -98,14 +113,36 @@ export default function ChatHistoryItem({ session, isActive, onLoad, onDelete, o
               title="Rename"
               className="p-2 lg:p-1 text-gray-400 hover:text-gray-100 rounded transition-colors"
             >
-              <Pencil size={13} />
+              <Pencil size={12} />
             </button>
+            {onPin && (
+              <button
+                onClick={onPin}
+                title={session.isPinned ? 'Unpin' : 'Pin to top'}
+                className={`p-2 lg:p-1 rounded transition-colors ${
+                  session.isPinned
+                    ? 'text-indigo-400 hover:text-indigo-300'
+                    : 'text-gray-400 hover:text-indigo-400'
+                }`}
+              >
+                <Pin size={12} className={session.isPinned ? 'fill-current' : ''} />
+              </button>
+            )}
+            {onArchive && (
+              <button
+                onClick={onArchive}
+                title="Archive"
+                className="p-2 lg:p-1 text-gray-400 hover:text-yellow-400 rounded transition-colors"
+              >
+                <Archive size={12} />
+              </button>
+            )}
             <button
               onClick={() => { if (confirm(`Delete "${session.title}"?`)) onDelete() }}
               title="Delete"
               className="p-2 lg:p-1 text-gray-400 hover:text-red-400 rounded transition-colors"
             >
-              <Trash2 size={13} />
+              <Trash2 size={12} />
             </button>
           </div>
         </>

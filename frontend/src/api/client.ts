@@ -114,11 +114,13 @@ export type StreamEvent =
  */
 export async function* streamChat(
   payload: QueryRequest,
+  signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
   const res = await fetch(`${API_BASE}/v1/chat/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    signal,
   })
 
   if (!res.ok) {

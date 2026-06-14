@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Plus, Search, X } from 'lucide-react'
 import ChatHistoryList from './ChatHistoryList'
 import SidebarDocumentSection from './SidebarDocumentSection'
@@ -15,6 +15,8 @@ interface Props {
   onLoadSession: (id: string) => void
   onDeleteSession: (id: string) => void
   onRenameSession: (id: string, title: string) => void
+  onPinSession?: (id: string) => void
+  onArchiveSession?: (id: string) => void
   selectedDocument: DocumentRecord | null
   onSelectDocument: (doc: DocumentRecord | null) => void
   selectedCollection: Collection | null
@@ -22,6 +24,8 @@ interface Props {
   onOpenSettings: () => void
   onOpenDocuments: () => void
   onOpenCollections: () => void
+  /** Increment to programmatically focus the search input (e.g. Cmd+K). */
+  focusSearchSignal?: number
 }
 
 export default function Sidebar({
@@ -33,6 +37,8 @@ export default function Sidebar({
   onLoadSession,
   onDeleteSession,
   onRenameSession,
+  onPinSession,
+  onArchiveSession,
   selectedDocument,
   onSelectDocument,
   selectedCollection,
@@ -40,14 +46,25 @@ export default function Sidebar({
   onOpenSettings,
   onOpenDocuments,
   onOpenCollections,
+  focusSearchSignal = 0,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Focus the search box whenever the signal increments (Cmd+K from App).
+  useEffect(() => {
+    if (focusSearchSignal > 0) {
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+    }
+  }, [focusSearchSignal])
 
   const filteredSessions = searchQuery.trim()
-    ? sessions.filter((s) => s.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    ? sessions.filter(
+        (s) => !s.isArchived && s.title.toLowerCase().includes(searchQuery.toLowerCase())
+      )
     : sessions
 
-  // On mobile the sidebar is a drawer — close it after the user navigates
   function closeOnMobile() {
     if (window.innerWidth < 1024) onClose()
   }
@@ -117,8 +134,9 @@ export default function Sidebar({
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"
           />
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder="Search conversations…"
+            placeholder="Search conversations… (⌘K)"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="
@@ -147,6 +165,8 @@ export default function Sidebar({
           onLoad={(id) => { onLoadSession(id); closeOnMobile() }}
           onDelete={onDeleteSession}
           onRename={onRenameSession}
+          onPin={onPinSession}
+          onArchive={onArchiveSession}
         />
       </div>
 

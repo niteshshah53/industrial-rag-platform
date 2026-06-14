@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { Archive } from 'lucide-react'
 import ChatHistoryItem from './ChatHistoryItem'
 import type { ChatSession } from '../types'
 
@@ -7,6 +9,8 @@ interface Props {
   onLoad: (id: string) => void
   onDelete: (id: string) => void
   onRename: (id: string, title: string) => void
+  onPin?: (id: string) => void
+  onArchive?: (id: string) => void
 }
 
 interface Group {
@@ -38,8 +42,24 @@ function groupByDate(sessions: ChatSession[]): Group[] {
   return groups.filter((g) => g.items.length > 0)
 }
 
-export default function ChatHistoryList({ sessions, activeSessionId, onLoad, onDelete, onRename }: Props) {
-  if (sessions.length === 0) {
+export default function ChatHistoryList({
+  sessions,
+  activeSessionId,
+  onLoad,
+  onDelete,
+  onRename,
+  onPin,
+  onArchive,
+}: Props) {
+  const [showArchived, setShowArchived] = useState(false)
+
+  const pinned = sessions.filter((s) => s.isPinned && !s.isArchived)
+  const regular = sessions.filter((s) => !s.isPinned && !s.isArchived)
+  const archived = sessions.filter((s) => s.isArchived)
+
+  const hasAny = pinned.length + regular.length + archived.length > 0
+
+  if (!hasAny) {
     return (
       <div className="py-8 text-center">
         <p className="text-xs text-gray-500">No conversations yet.</p>
@@ -48,29 +68,69 @@ export default function ChatHistoryList({ sessions, activeSessionId, onLoad, onD
     )
   }
 
-  const groups = groupByDate(sessions)
+  const regularGroups = groupByDate(regular)
+
+  function itemProps(session: ChatSession) {
+    return {
+      session,
+      isActive: session.id === activeSessionId,
+      onLoad: () => onLoad(session.id),
+      onDelete: () => onDelete(session.id),
+      onRename: (title: string) => onRename(session.id, title),
+      onPin: onPin ? () => onPin(session.id) : undefined,
+      onArchive: onArchive ? () => onArchive(session.id) : undefined,
+    }
+  }
 
   return (
     <div className="space-y-4 pb-2">
-      {groups.map((group) => (
+      {/* Pinned section */}
+      {pinned.length > 0 && (
+        <div>
+          <p className="px-2 mb-1 text-xs font-semibold text-indigo-400 uppercase tracking-wider">
+            Pinned
+          </p>
+          <div className="space-y-0.5">
+            {pinned.map((session) => (
+              <ChatHistoryItem key={session.id} {...itemProps(session)} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Regular sessions grouped by date */}
+      {regularGroups.map((group) => (
         <div key={group.label}>
           <p className="px-2 mb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
             {group.label}
           </p>
           <div className="space-y-0.5">
             {group.items.map((session) => (
-              <ChatHistoryItem
-                key={session.id}
-                session={session}
-                isActive={session.id === activeSessionId}
-                onLoad={() => onLoad(session.id)}
-                onDelete={() => onDelete(session.id)}
-                onRename={(title) => onRename(session.id, title)}
-              />
+              <ChatHistoryItem key={session.id} {...itemProps(session)} />
             ))}
           </div>
         </div>
       ))}
+
+      {/* Archived sessions */}
+      {archived.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowArchived((v) => !v)}
+            className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            <Archive size={12} />
+            {showArchived ? 'Hide' : 'Show'} {archived.length} archived
+          </button>
+          {showArchived && (
+            <div className="space-y-0.5 mt-1 border-t border-gray-700 pt-2">
+              {archived.map((session) => (
+                <ChatHistoryItem key={session.id} {...itemProps(session)} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

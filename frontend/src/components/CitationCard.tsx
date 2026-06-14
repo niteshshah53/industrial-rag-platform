@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, ChevronUp, FileText } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, FileText, Copy, Check } from 'lucide-react'
 import type { Citation } from '../types'
 
 interface Props {
@@ -7,10 +7,16 @@ interface Props {
 }
 
 export default function CitationCard({ citations }: Props) {
-  // Outer toggle — show/hide the citation list
   const [open, setOpen] = useState(false)
-  // Per-citation expand — which rows show the full passage
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
+
+  function copySnippet(text: string, i: number) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedIdx(i)
+      setTimeout(() => setCopiedIdx(null), 1500)
+    })
+  }
 
   if (citations.length === 0) return null
 
@@ -57,11 +63,25 @@ export default function CitationCard({ citations }: Props) {
                     {i + 1}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-gray-800 dark:text-gray-200 truncate">
-                      {c.document_name}
-                    </p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium text-gray-800 dark:text-gray-200 truncate">
+                        {c.document_name}
+                      </p>
+                      {(c.snippet || c.text) && (
+                        <button
+                          onClick={() => copySnippet(c.snippet ?? c.text ?? '', i)}
+                          title="Copy snippet"
+                          className="shrink-0 p-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          {copiedIdx === i
+                            ? <Check size={11} className="text-green-500" />
+                            : <Copy size={11} />
+                          }
+                        </button>
+                      )}
+                    </div>
                     <p className="text-gray-500 dark:text-gray-400 text-xs">
-                      Page {c.page_number} &middot; score {c.relevance_score.toFixed(3)}
+                      Page {c.page_number} &middot; {Math.round(c.relevance_score * 100)}% relevance
                     </p>
 
                     {/* Snippet preview — always visible, click to see more */}

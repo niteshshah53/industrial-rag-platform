@@ -20,10 +20,12 @@ export default function App() {
   const [documentsOpen, setDocumentsOpen] = useState(false)
   const [collectionsOpen, setCollectionsOpen] = useState(false)
   const [suggestedInput, setSuggestedInput] = useState('')
+  const [focusSearchSignal, setFocusSearchSignal] = useState(0)
 
   const {
     messages,
     sendMessage,
+    stopGeneration,
     isLoading,
     sessions,
     activeSessionId,
@@ -31,6 +33,11 @@ export default function App() {
     loadSession,
     deleteSession,
     renameSession,
+    pinSession,
+    archiveSession,
+    deleteMessage,
+    truncateFrom,
+    reactToMessage,
   } = useChat()
 
   const handleNewChat = useCallback(() => {
@@ -39,28 +46,90 @@ export default function App() {
 
   const chatEnabled = (selectedDoc && selectedDoc.status === 'READY') || selectedCollection !== null
 
-  // Global keyboard shortcuts
+  // ── Message actions ────────────────────────────────────────────────────────
+
+  function handleRegenerate(assistantMsgId: string) {
+    const session = sessions.find((s) => s.id === activeSessionId)
+    if (!session) return
+    const idx = session.messages.findIndex((m) => m.id === assistantMsgId)
+    if (idx <= 0) return
+    const prevUser = session.messages[idx - 1]
+    if (prevUser.role !== 'user') return
+    truncateFrom(assistantMsgId)
+    sendMessage(prevUser.content, selectedDoc?.document_id, selectedCollection?.collection_id)
+  }
+
+  function handleEditUserMessage(msgId: string, content: string) {
+    truncateFrom(msgId)
+    setSuggestedInput(content)
+  }
+
+  // ── Global keyboard shortcuts ──────────────────────────────────────────────
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const meta = e.metaKey || e.ctrlKey
-      // Cmd/Ctrl+B — toggle sidebar (mobile drawer)
+
       if (meta && !e.shiftKey && e.key.toLowerCase() === 'b') {
         e.preventDefault()
         setSidebarOpen((prev) => !prev)
+        return
       }
-      // Cmd/Ctrl+Shift+O — new chat
+
       if (meta && e.shiftKey && e.key.toLowerCase() === 'o') {
         e.preventDefault()
         handleNewChat()
+        return
       }
-      // Escape — close settings panel
-      if (e.key === 'Escape' && settingsOpen) {
-        setSettingsOpen(false)
+
+      // Cmd/Ctrl+K — focus sidebar search
+      if (meta && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSidebarOpen(true)
+        setFocusSearchSignal((s) => s + 1)
+        return
+      }
+
+      // Cmd/Ctrl+Shift+C — copy last assistant message
+      if (meta && e.shiftKey && e.key.toLowerCase() === 'c') {
+        const tag = (e.target as HTMLElement).tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return // don't hijack text copy
+        e.preventDefault()
+        const session = sessions.find((s) => s.id === activeSessionId)
+        if (!session) return
+        const last = [...session.messages].reverse().find(
+          (m) => m.role === 'assistant' && !m.isLoading && !m.isStreaming && m.content
+        )
+        if (last) navigator.clipboard.writeText(last.content)
+        return
+      }
+
+      // Cmd/Ctrl+Shift+R — regenerate last assistant response
+      if (meta && e.shiftKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault()
+        if (isLoading) return
+        const session = sessions.find((s) => s.id === activeSessionId)
+        if (!session) return
+        const last = [...session.messages].reverse().find(
+          (m) => m.role === 'assistant' && !m.isLoading && !m.isStreaming
+        )
+        if (last) handleRegenerate(last.id)
+        return
+      }
+
+      // Escape — stop generation first, then close panels
+      if (e.key === 'Escape') {
+        if (isLoading) {
+          stopGeneration()
+          return
+        }
+        if (settingsOpen) { setSettingsOpen(false); return }
       }
     }
+
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [handleNewChat, settingsOpen])
+  }, [handleNewChat, settingsOpen, sessions, activeSessionId, isLoading, stopGeneration]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex h-screen overflow-hidden bg-white dark:bg-gray-900 transition-colors duration-200">
@@ -81,6 +150,8 @@ export default function App() {
         onLoadSession={loadSession}
         onDeleteSession={deleteSession}
         onRenameSession={renameSession}
+        onPinSession={pinSession}
+        onArchiveSession={archiveSession}
         selectedDocument={selectedDoc}
         onSelectDocument={(doc) => { setSelectedDoc(doc); if (doc) setSelectedCollection(null) }}
         selectedCollection={selectedCollection}
@@ -88,6 +159,7 @@ export default function App() {
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenDocuments={() => setDocumentsOpen(true)}
         onOpenCollections={() => setCollectionsOpen(true)}
+        focusSearchSignal={focusSearchSignal}
       />
 
       <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
@@ -126,11 +198,9 @@ export default function App() {
             <Menu size={20} />
           </button>
           <div className="flex-1 min-w-0">
-            {/* Primary: active session title (or app name as fallback) */}
             <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm truncate leading-tight">
               {sessions.find((s) => s.id === activeSessionId)?.title ?? 'Industrial Document Intelligence'}
             </p>
-            {/* Subtitle: selected document or collection name */}
             {selectedDoc && (
               <p className="text-xs text-gray-400 dark:text-gray-500 truncate leading-tight">
                 {selectedDoc.filename}
@@ -146,14 +216,21 @@ export default function App() {
 
         <ChatWindow
           selectedDocument={selectedDoc}
+          selectedCollection={selectedCollection}
           messages={messages}
+          isLoading={isLoading}
           onSuggestPrompt={setSuggestedInput}
+          onDeleteMessage={deleteMessage}
+          onReactToMessage={reactToMessage}
+          onRegenerate={handleRegenerate}
+          onEditUserMessage={handleEditUserMessage}
         />
 
         <ChatInputBar
           disabled={!chatEnabled}
           isLoading={isLoading}
           onSend={(text) => sendMessage(text, selectedDoc?.document_id, selectedCollection?.collection_id)}
+          onStop={stopGeneration}
           onDocumentUploaded={(doc) => { setSelectedDoc(doc); setSelectedCollection(null) }}
           suggestedInput={suggestedInput}
           onSuggestConsumed={() => setSuggestedInput('')}

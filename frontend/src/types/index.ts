@@ -86,6 +86,8 @@ export interface ChatMessage {
   isLoading?: boolean
   isStreaming?: boolean
   isError?: boolean
+  isStopped?: boolean
+  reaction?: 'like' | 'dislike'
 }
 
 export interface ChatSession {
@@ -95,6 +97,8 @@ export interface ChatSession {
   updatedAt: string
   messages: ChatMessage[]
   documentId?: string
+  isPinned?: boolean
+  isArchived?: boolean
 }
 
 export type Theme = 'light' | 'dark' | 'system'

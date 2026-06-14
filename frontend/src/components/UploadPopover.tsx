@@ -22,9 +22,11 @@ export default function UploadPopover({ isOpen, onFileSelected }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
+    const files = Array.from(e.target.files ?? [])
     e.target.value = ''
-    if (file && isValidFile(file)) onFileSelected(file)
+    for (const file of files) {
+      if (isValidFile(file)) onFileSelected(file)
+    }
   }
 
   return (
@@ -34,6 +36,7 @@ export default function UploadPopover({ isOpen, onFileSelected }: Props) {
         ref={inputRef}
         type="file"
         accept={ACCEPTED}
+        multiple
         className="hidden"
         onChange={handleChange}
       />
