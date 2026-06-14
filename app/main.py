@@ -27,7 +27,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1.routers import chat, documents, system
+from app.api.v1.routers import chat, collections, documents, system
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.core.logging import configure_logging, get_logger
@@ -252,6 +252,7 @@ def create_app() -> FastAPI:
 
     app.include_router(system.router, prefix="/v1")
     app.include_router(documents.router, prefix="/v1")
+    app.include_router(collections.router, prefix="/v1")
     app.include_router(chat.router, prefix="/v1")
 
     return app

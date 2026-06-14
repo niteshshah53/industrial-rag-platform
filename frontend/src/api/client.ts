@@ -1,8 +1,11 @@
 import type {
+  Collection,
+  CollectionCreate,
+  CollectionListResponse,
   DocumentRecord,
-  UploadResponse,
   QueryRequest,
   QueryResponse,
+  UploadResponse,
 } from '../types'
 
 // In Docker: nginx strips /api prefix → forwards to http://app:8000
@@ -46,6 +49,37 @@ export async function getDocument(id: string): Promise<DocumentRecord> {
 
 export async function deleteDocument(id: string): Promise<void> {
   await request<unknown>(`/v1/documents/${id}`, { method: 'DELETE' })
+}
+
+// ── Collection endpoints ───────────────────────────────────────────────────────
+
+export async function createCollection(body: CollectionCreate): Promise<Collection> {
+  return request<Collection>('/v1/collections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function listCollections(): Promise<Collection[]> {
+  const res = await request<CollectionListResponse>('/v1/collections')
+  return res.collections
+}
+
+export async function getCollection(id: string): Promise<Collection> {
+  return request<Collection>(`/v1/collections/${id}`)
+}
+
+export async function deleteCollection(id: string): Promise<void> {
+  await request<unknown>(`/v1/collections/${id}`, { method: 'DELETE' })
+}
+
+export async function addDocumentToCollection(collectionId: string, documentId: string): Promise<void> {
+  await request<unknown>(`/v1/collections/${collectionId}/documents/${documentId}`, { method: 'POST' })
+}
+
+export async function removeDocumentFromCollection(collectionId: string, documentId: string): Promise<void> {
+  await request<unknown>(`/v1/collections/${collectionId}/documents/${documentId}`, { method: 'DELETE' })
 }
 
 // ── Chat endpoints ─────────────────────────────────────────────────────────────

@@ -172,7 +172,7 @@ class QdrantRepository:
         vector: list[float],
         top_k: int,
         score_threshold: float,
-        document_id_filter: str | None = None,
+        document_id_filter: str | list[str] | None = None,
     ) -> list[RetrievedChunk]:
         """
         Dense vector search with cosine similarity.
@@ -216,7 +216,7 @@ class QdrantRepository:
         sparse_vector: SparseVector,
         top_k: int,
         score_threshold: float,
-        document_id_filter: str | None = None,
+        document_id_filter: str | list[str] | None = None,
     ) -> list[RetrievedChunk]:
         """
         Hybrid search: dense vector + BM25 sparse, fused with Reciprocal Rank Fusion.
@@ -276,7 +276,7 @@ class QdrantRepository:
                     vector=dense_vector,
                     top_k=top_k,
                     score_threshold=score_threshold,
-                    document_id_filter=document_id_filter,
+                    document_id_filter=document_id_filter,  # str | list[str] | None
                 )
             raise
 
@@ -318,16 +318,23 @@ class QdrantRepository:
 
     # ── Private helpers ────────────────────────────────────────────────────────
 
-    def _build_filter(self, document_id_filter: str | None) -> Filter | None:
-        """Return a Qdrant keyword filter for document_id, or None."""
+    def _build_filter(self, document_id_filter: str | list[str] | None) -> Filter | None:
+        """Return a Qdrant keyword filter for one or more document_ids, or None."""
         if not document_id_filter:
             return None
+        if isinstance(document_id_filter, str):
+            return Filter(
+                must=[FieldCondition(key="document_id", match=MatchValue(value=document_id_filter))]
+            )
+        if len(document_id_filter) == 1:
+            return Filter(
+                must=[FieldCondition(key="document_id", match=MatchValue(value=document_id_filter[0]))]
+            )
+        # OR filter across all member documents in a collection.
         return Filter(
-            must=[
-                FieldCondition(
-                    key="document_id",
-                    match=MatchValue(value=document_id_filter),
-                )
+            should=[
+                FieldCondition(key="document_id", match=MatchValue(value=did))
+                for did in document_id_filter
             ]
         )
 

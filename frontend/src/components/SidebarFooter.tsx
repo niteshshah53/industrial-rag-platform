@@ -1,11 +1,12 @@
-import { Settings, Files } from 'lucide-react'
+import { Settings, Files, FolderOpen } from 'lucide-react'
 
 interface Props {
   onOpenSettings: () => void
   onOpenDocuments: () => void
+  onOpenCollections: () => void
 }
 
-export default function SidebarFooter({ onOpenSettings, onOpenDocuments }: Props) {
+export default function SidebarFooter({ onOpenSettings, onOpenDocuments, onOpenCollections }: Props) {
   return (
     <div className="shrink-0 border-t border-gray-700 px-3 py-3 flex items-center gap-1">
       <button
@@ -23,6 +24,14 @@ export default function SidebarFooter({ onOpenSettings, onOpenDocuments }: Props
         className="p-2 text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded-lg transition-colors"
       >
         <Files size={18} />
+      </button>
+      <button
+        onClick={onOpenCollections}
+        title="Manage collections"
+        aria-label="Manage collections"
+        className="p-2 text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded-lg transition-colors"
+      >
+        <FolderOpen size={18} />
       </button>
       <div className="flex-1" />
       <div

@@ -5,17 +5,20 @@ import ChatWindow from './components/ChatWindow'
 import ChatInputBar from './components/ChatInputBar'
 import SettingsPanel from './components/SettingsPanel'
 import DocumentsPanel from './components/DocumentsPanel'
+import CollectionsPanel from './components/CollectionsPanel'
 import { useChat } from './hooks/useChat'
 import { useTheme } from './hooks/useTheme'
-import type { DocumentRecord } from './types'
+import type { Collection, DocumentRecord } from './types'
 
 export default function App() {
   useTheme()
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState<DocumentRecord | null>(null)
+  const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [documentsOpen, setDocumentsOpen] = useState(false)
+  const [collectionsOpen, setCollectionsOpen] = useState(false)
   const [suggestedInput, setSuggestedInput] = useState('')
 
   const {
@@ -33,6 +36,8 @@ export default function App() {
   const handleNewChat = useCallback(() => {
     createSession(selectedDoc?.document_id)
   }, [createSession, selectedDoc])
+
+  const chatEnabled = (selectedDoc && selectedDoc.status === 'READY') || selectedCollection !== null
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -77,9 +82,12 @@ export default function App() {
         onDeleteSession={deleteSession}
         onRenameSession={renameSession}
         selectedDocument={selectedDoc}
-        onSelectDocument={setSelectedDoc}
+        onSelectDocument={(doc) => { setSelectedDoc(doc); if (doc) setSelectedCollection(null) }}
+        selectedCollection={selectedCollection}
+        onSelectCollection={(col) => { setSelectedCollection(col); if (col) setSelectedDoc(null) }}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenDocuments={() => setDocumentsOpen(true)}
+        onOpenCollections={() => setCollectionsOpen(true)}
       />
 
       <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
@@ -91,6 +99,17 @@ export default function App() {
         onDocumentDeleted={(ids) => {
           if (selectedDoc && ids.includes(selectedDoc.document_id)) {
             setSelectedDoc(null)
+          }
+        }}
+      />
+
+      <CollectionsPanel
+        isOpen={collectionsOpen}
+        onClose={() => setCollectionsOpen(false)}
+        selectedCollectionId={selectedCollection?.collection_id ?? null}
+        onCollectionDeleted={(id) => {
+          if (selectedCollection?.collection_id === id) {
+            setSelectedCollection(null)
           }
         }}
       />
@@ -111,10 +130,15 @@ export default function App() {
             <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm truncate leading-tight">
               {sessions.find((s) => s.id === activeSessionId)?.title ?? 'Industrial Document Intelligence'}
             </p>
-            {/* Subtitle: selected document name */}
+            {/* Subtitle: selected document or collection name */}
             {selectedDoc && (
               <p className="text-xs text-gray-400 dark:text-gray-500 truncate leading-tight">
                 {selectedDoc.filename}
+              </p>
+            )}
+            {selectedCollection && !selectedDoc && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 truncate leading-tight">
+                {selectedCollection.name} ({selectedCollection.document_ids.length} docs)
               </p>
             )}
           </div>
@@ -127,10 +151,10 @@ export default function App() {
         />
 
         <ChatInputBar
-          disabled={!selectedDoc || selectedDoc.status !== 'READY'}
+          disabled={!chatEnabled}
           isLoading={isLoading}
-          onSend={(text) => sendMessage(text, selectedDoc?.document_id)}
-          onDocumentUploaded={setSelectedDoc}
+          onSend={(text) => sendMessage(text, selectedDoc?.document_id, selectedCollection?.collection_id)}
+          onDocumentUploaded={(doc) => { setSelectedDoc(doc); setSelectedCollection(null) }}
           suggestedInput={suggestedInput}
           onSuggestConsumed={() => setSuggestedInput('')}
         />

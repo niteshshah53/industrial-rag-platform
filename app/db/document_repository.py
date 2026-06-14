@@ -21,12 +21,13 @@ Design decisions:
     reused across all requests for connection pooling efficiency.
 """
 
+import uuid
 from datetime import UTC, datetime
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 from app.core.logging import get_logger
-from app.core.models import DocumentRecord, DocumentStatus
+from app.core.models import CollectionRecord, DocumentRecord, DocumentStatus
 
 logger = get_logger(__name__)
 
@@ -53,6 +54,29 @@ class DocumentRow(SQLModel, table=True):
     upload_timestamp: datetime
     file_size_bytes: int
     error_message: str | None = Field(default=None)
+
+
+# ── Collection SQLModel Tables ─────────────────────────────────────────────────
+
+
+class CollectionRow(SQLModel, table=True):
+    """SQLite table row for a named document collection."""
+
+    __tablename__ = "collections"
+
+    collection_id: str = Field(primary_key=True)
+    name: str = Field(index=True)
+    description: str | None = Field(default=None)
+    created_at: datetime
+
+
+class CollectionMemberRow(SQLModel, table=True):
+    """Join table: maps collection_id → document_id (many-to-many)."""
+
+    __tablename__ = "collection_members"
+
+    collection_id: str = Field(primary_key=True)
+    document_id: str = Field(primary_key=True)
 
 
 # ── Repository ─────────────────────────────────────────────────────────────────
@@ -177,6 +201,133 @@ class DocumentRepository:
             return [self._to_record(row) for row in rows]
 
     # ── Helpers ────────────────────────────────────────────────────────────────
+
+    # ── Collection CRUD ────────────────────────────────────────────────────────
+
+    def create_collection(
+        self,
+        name: str,
+        description: str | None = None,
+        document_ids: list[str] | None = None,
+    ) -> CollectionRecord:
+        """Create a new collection and optionally add initial members."""
+        collection_id = str(uuid.uuid4())
+        now = utcnow()
+        row = CollectionRow(
+            collection_id=collection_id,
+            name=name,
+            description=description,
+            created_at=now,
+        )
+        with Session(self._engine) as session:
+            session.add(row)
+            for doc_id in (document_ids or []):
+                session.add(CollectionMemberRow(collection_id=collection_id, document_id=doc_id))
+            session.commit()
+
+        logger.debug("Collection created", extra={"collection_id": collection_id, "name": name})
+        return CollectionRecord(
+            collection_id=collection_id,
+            name=name,
+            description=description,
+            document_ids=list(document_ids or []),
+            created_at=now,
+        )
+
+    def get_collection(self, collection_id: str) -> CollectionRecord | None:
+        """Return a CollectionRecord with its member document_ids, or None."""
+        with Session(self._engine) as session:
+            row = session.get(CollectionRow, collection_id)
+            if row is None:
+                return None
+            members = session.exec(
+                select(CollectionMemberRow).where(CollectionMemberRow.collection_id == collection_id)
+            ).all()
+            return CollectionRecord(
+                collection_id=row.collection_id,
+                name=row.name,
+                description=row.description,
+                document_ids=[m.document_id for m in members],
+                created_at=row.created_at,
+            )
+
+    def list_collections(self) -> list[CollectionRecord]:
+        """Return all collections with their member document_ids, newest first."""
+        with Session(self._engine) as session:
+            rows = session.exec(
+                select(CollectionRow).order_by(CollectionRow.created_at.desc())  # type: ignore[attr-defined]
+            ).all()
+            result = []
+            for row in rows:
+                members = session.exec(
+                    select(CollectionMemberRow).where(
+                        CollectionMemberRow.collection_id == row.collection_id
+                    )
+                ).all()
+                result.append(
+                    CollectionRecord(
+                        collection_id=row.collection_id,
+                        name=row.name,
+                        description=row.description,
+                        document_ids=[m.document_id for m in members],
+                        created_at=row.created_at,
+                    )
+                )
+            return result
+
+    def delete_collection(self, collection_id: str) -> bool:
+        """Delete a collection and all its membership entries. Returns False if not found."""
+        with Session(self._engine) as session:
+            row = session.get(CollectionRow, collection_id)
+            if row is None:
+                return False
+            members = session.exec(
+                select(CollectionMemberRow).where(CollectionMemberRow.collection_id == collection_id)
+            ).all()
+            for m in members:
+                session.delete(m)
+            session.delete(row)
+            session.commit()
+        logger.debug("Collection deleted", extra={"collection_id": collection_id})
+        return True
+
+    def add_document_to_collection(self, collection_id: str, document_id: str) -> bool:
+        """Add a document to a collection. Returns False if already a member."""
+        with Session(self._engine) as session:
+            existing = session.get(CollectionMemberRow, (collection_id, document_id))
+            if existing is not None:
+                return False
+            session.add(CollectionMemberRow(collection_id=collection_id, document_id=document_id))
+            session.commit()
+        return True
+
+    def remove_document_from_collection(self, collection_id: str, document_id: str) -> bool:
+        """Remove a document from a collection. Returns False if not a member."""
+        with Session(self._engine) as session:
+            row = session.get(CollectionMemberRow, (collection_id, document_id))
+            if row is None:
+                return False
+            session.delete(row)
+            session.commit()
+        return True
+
+    def get_collection_document_ids(self, collection_id: str) -> list[str]:
+        """Return all document_ids belonging to a collection."""
+        with Session(self._engine) as session:
+            members = session.exec(
+                select(CollectionMemberRow).where(CollectionMemberRow.collection_id == collection_id)
+            ).all()
+            return [m.document_id for m in members]
+
+    def remove_document_from_all_collections(self, document_id: str) -> None:
+        """Remove a document from every collection it belongs to (called on document delete)."""
+        with Session(self._engine) as session:
+            rows = session.exec(
+                select(CollectionMemberRow).where(CollectionMemberRow.document_id == document_id)
+            ).all()
+            for row in rows:
+                session.delete(row)
+            session.commit()
 
     @staticmethod
     def _to_record(row: DocumentRow) -> DocumentRecord:

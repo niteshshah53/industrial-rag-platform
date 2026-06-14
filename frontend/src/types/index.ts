@@ -47,8 +47,30 @@ export interface QueryRequest {
   top_k?: number
   score_threshold?: number
   document_id?: string
+  collection_id?: string
   search_mode?: 'dense' | 'hybrid'
   conversation_history?: ConversationTurn[]
+}
+
+// ── Collection types ───────────────────────────────────────────────────────────
+
+export interface Collection {
+  collection_id: string
+  name: string
+  description: string | null
+  document_ids: string[]
+  created_at: string
+}
+
+export interface CollectionCreate {
+  name: string
+  description?: string
+  document_ids?: string[]
+}
+
+export interface CollectionListResponse {
+  collections: Collection[]
+  total: number
 }
 
 // ── UI-only types ──────────────────────────────────────────────────────────────

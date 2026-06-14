@@ -100,7 +100,10 @@ def get_ingestion_service(
 # ── Phase 2 / 3 ───────────────────────────────────────────────────────────────
 
 
-def get_query_service(request: Request):
+def get_query_service(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+):
     """
     Return a QueryService backed by the compiled LangGraph RAG graph.
 
@@ -112,9 +115,15 @@ def get_query_service(request: Request):
         client.app.dependency_overrides[get_query_service] = lambda: mock_svc
     so app.state is never accessed in unit tests.
     """
+    import os
+
+    from app.db.document_repository import DocumentRepository
     from app.services.query_service import QueryService
 
     state = request.app.state
+    db_path = os.path.join(settings.upload_dir, "documents.db")
+    doc_repo = DocumentRepository(db_path=db_path)
+
     return QueryService(
         graph=state.rag_graph,
         embedder=getattr(state, "embedder", None),
@@ -123,4 +132,5 @@ def get_query_service(request: Request):
         llm_model=getattr(state, "llm_model", "llama3.2:3b"),
         max_context_chars=getattr(state, "max_context_chars", 8000),
         sparse_embedder=getattr(state, "sparse_embedder", None),
+        doc_repo=doc_repo,
     )

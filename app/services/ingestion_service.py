@@ -207,6 +207,7 @@ class IngestionService:
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, partial(self._qdrant_repo.delete_document, document_id))
+        self._doc_repo.remove_document_from_all_collections(document_id)
         self._doc_repo.delete(document_id)
 
         logger.info("Document deleted", extra={"document_id": document_id})

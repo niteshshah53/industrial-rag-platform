@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { Plus, Search, X } from 'lucide-react'
 import ChatHistoryList from './ChatHistoryList'
 import SidebarDocumentSection from './SidebarDocumentSection'
+import SidebarCollectionSection from './SidebarCollectionSection'
 import SidebarFooter from './SidebarFooter'
-import type { ChatSession, DocumentRecord } from '../types'
+import type { ChatSession, Collection, DocumentRecord } from '../types'
 
 interface Props {
   isOpen: boolean
@@ -16,8 +17,11 @@ interface Props {
   onRenameSession: (id: string, title: string) => void
   selectedDocument: DocumentRecord | null
   onSelectDocument: (doc: DocumentRecord | null) => void
+  selectedCollection: Collection | null
+  onSelectCollection: (col: Collection | null) => void
   onOpenSettings: () => void
   onOpenDocuments: () => void
+  onOpenCollections: () => void
 }
 
 export default function Sidebar({
@@ -31,8 +35,11 @@ export default function Sidebar({
   onRenameSession,
   selectedDocument,
   onSelectDocument,
+  selectedCollection,
+  onSelectCollection,
   onOpenSettings,
   onOpenDocuments,
+  onOpenCollections,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -146,11 +153,29 @@ export default function Sidebar({
       {/* Documents section */}
       <SidebarDocumentSection
         selectedDocument={selectedDocument}
-        onSelectDocument={(doc) => { onSelectDocument(doc); closeOnMobile() }}
+        onSelectDocument={(doc) => {
+          onSelectDocument(doc)
+          if (doc) onSelectCollection(null)
+          closeOnMobile()
+        }}
+      />
+
+      {/* Collections section */}
+      <SidebarCollectionSection
+        selectedCollection={selectedCollection}
+        onSelectCollection={(col) => {
+          onSelectCollection(col)
+          if (col) onSelectDocument(null)
+          closeOnMobile()
+        }}
       />
 
       {/* Footer */}
-      <SidebarFooter onOpenSettings={onOpenSettings} onOpenDocuments={onOpenDocuments} />
+      <SidebarFooter
+        onOpenSettings={onOpenSettings}
+        onOpenDocuments={onOpenDocuments}
+        onOpenCollections={onOpenCollections}
+      />
     </aside>
   )
 }

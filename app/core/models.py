@@ -252,6 +252,13 @@ class QueryRequest(BaseModel):
         default=None,
         description="Optional: restrict retrieval to chunks from this document only",
     )
+    collection_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional: restrict retrieval to all documents in this named collection. "
+            "Mutually exclusive with document_id — collection_id takes priority when both are set."
+        ),
+    )
     include_contexts: bool = Field(
         default=False,
         description=(
@@ -322,3 +329,37 @@ class QueryResponse(BaseModel):
             "Used by the RAGAS evaluation pipeline."
         ),
     )
+
+
+# ── Phase 7 Step 5 — Multi-Document Collections ───────────────────────────────
+
+
+class CollectionRecord(BaseModel):
+    """A named group of documents for collection-scoped queries."""
+
+    collection_id: str = Field(description="UUID assigned at creation time")
+    name: str = Field(description="Human-readable collection name")
+    description: str | None = Field(default=None, description="Optional description")
+    document_ids: list[str] = Field(
+        default_factory=list,
+        description="Document UUIDs that are members of this collection",
+    )
+    created_at: datetime = Field(description="UTC timestamp when the collection was created")
+
+
+class CollectionCreate(BaseModel):
+    """Request body for POST /v1/collections."""
+
+    name: str = Field(min_length=1, max_length=100, description="Collection name")
+    description: str | None = Field(default=None, max_length=500)
+    document_ids: list[str] = Field(
+        default_factory=list,
+        description="Optional list of document_ids to add as initial members",
+    )
+
+
+class CollectionListResponse(BaseModel):
+    """Response body for GET /v1/collections."""
+
+    collections: list[CollectionRecord]
+    total: int

@@ -37,6 +37,7 @@ from app.core.exceptions import ServiceUnavailableError
 
 if TYPE_CHECKING:
     from app.agents.state import RAGState
+    from app.db.document_repository import DocumentRepository
     from app.db.qdrant_repository import QdrantRepository
     from app.rag.embedder import OllamaEmbedder
     from app.rag.sparse_embedder import SparseEmbedder
@@ -87,6 +88,7 @@ class QueryService:
         llm_model: str = "llama3.2:3b",
         max_context_chars: int = 8000,
         sparse_embedder: "SparseEmbedder | None" = None,
+        doc_repo: "DocumentRepository | None" = None,
     ) -> None:
         self._graph = graph
         self._embedder = embedder
@@ -95,6 +97,7 @@ class QueryService:
         self._llm_model = llm_model
         self._max_context_chars = max_context_chars
         self._sparse_embedder = sparse_embedder
+        self._doc_repo = doc_repo
 
     # ── Blocking path (existing) ───────────────────────────────────────────────
 
@@ -128,11 +131,14 @@ class QueryService:
             extra={"request_id": request_id, "question_length": len(request.question)},
         )
 
+        document_ids = self._resolve_document_ids(request)
+
         initial_state: RAGState = {
             "question": request.question,
             "top_k": request.top_k,
             "score_threshold": request.score_threshold,
             "document_id": request.document_id,
+            "document_ids": document_ids,
             "request_id": request_id,
             "start_time": start_time,
             "search_mode": request.search_mode,
@@ -334,11 +340,12 @@ class QueryService:
             qdrant_repo=self._qdrant_repo,
             sparse_embedder=self._sparse_embedder,
         )
+        doc_filter = self._resolve_document_ids(request) or request.document_id
         retrieved_chunks = retriever.retrieve(
             question=request.question,
             top_k=request.top_k,
             score_threshold=request.score_threshold,
-            document_id_filter=request.document_id,
+            document_id_filter=doc_filter,
             search_mode=search_mode,
         )
 
@@ -350,6 +357,18 @@ class QueryService:
             max_chars=self._max_context_chars,
         )
         return retrieved_chunks, included_chunks, context_string
+
+    def _resolve_document_ids(self, request: QueryRequest) -> list[str] | None:
+        """
+        Resolve a collection_id to its member document_ids.
+
+        Returns a list of document IDs when the request targets a collection,
+        or None when the request targets a single document or all documents.
+        """
+        if request.collection_id and self._doc_repo is not None:
+            ids = self._doc_repo.get_collection_document_ids(request.collection_id)
+            return ids if ids else None
+        return None
 
     @staticmethod
     def _build_citations(included_chunks: list[RetrievedChunk]):

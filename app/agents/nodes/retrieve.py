@@ -51,6 +51,9 @@ def build_retrieve_node(
         question = state["question"]
         search_mode = state.get("search_mode", "hybrid")
 
+        # document_ids (collection) takes priority over single document_id.
+        doc_filter = state.get("document_ids") or state.get("document_id")
+
         logger.info(
             "Retrieve node: starting",
             extra={
@@ -58,7 +61,7 @@ def build_retrieve_node(
                 "search_mode": search_mode,
                 "top_k": state.get("top_k"),
                 "score_threshold": state.get("score_threshold"),
-                "document_id_filter": state.get("document_id"),
+                "document_id_filter": doc_filter,
             },
         )
 
@@ -66,7 +69,7 @@ def build_retrieve_node(
             question=question,
             top_k=state["top_k"],
             score_threshold=state["score_threshold"],
-            document_id_filter=state.get("document_id"),
+            document_id_filter=doc_filter,
             search_mode=search_mode,
         )
 

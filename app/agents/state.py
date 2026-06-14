@@ -55,6 +55,9 @@ class RAGState(TypedDict, total=False):
     top_k: int
     score_threshold: float
     document_id: str | None
+    # When set, retrieve across all listed document IDs (collection query).
+    # Takes priority over document_id. Set by QueryService after resolving collection_id.
+    document_ids: list[str] | None
     request_id: str
     start_time: float
     # "hybrid" uses BM25 + dense RRF; "dense" uses cosine similarity only.

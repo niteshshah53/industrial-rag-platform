@@ -48,6 +48,9 @@ class ErrorCode(StrEnum):
     NO_DOCUMENTS_FOUND = "NO_DOCUMENTS_FOUND"
     QUERY_FAILED = "QUERY_FAILED"
 
+    # Collection management
+    COLLECTION_NOT_FOUND = "COLLECTION_NOT_FOUND"
+
     # Infrastructure
     SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
     COLLECTION_DIMENSION_MISMATCH = "COLLECTION_DIMENSION_MISMATCH"
@@ -221,6 +224,18 @@ class QueryError(AppError):
 
 
 # ── Infrastructure Exceptions ─────────────────────────────────────────────────
+
+
+class CollectionNotFoundError(AppError):
+    """Raised when a collection_id does not exist in the registry."""
+
+    def __init__(self, collection_id: str) -> None:
+        super().__init__(
+            message=f"Collection '{collection_id}' does not exist.",
+            code=ErrorCode.COLLECTION_NOT_FOUND,
+            status_code=404,
+        )
+        self.collection_id = collection_id
 
 
 class ServiceUnavailableError(AppError):

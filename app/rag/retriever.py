@@ -52,7 +52,7 @@ class Retriever:
         question: str,
         top_k: int,
         score_threshold: float,
-        document_id_filter: str | None = None,
+        document_id_filter: str | list[str] | None = None,
         search_mode: str = "hybrid",
     ) -> list[RetrievedChunk]:
         """

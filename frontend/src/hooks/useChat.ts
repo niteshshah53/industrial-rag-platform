@@ -147,7 +147,7 @@ export function useChat() {
   // ── Chat ───────────────────────────────────────────────────────────────────
 
   const sendMessage = useCallback(
-    async (question: string, documentId?: string) => {
+    async (question: string, documentId?: string, collectionId?: string) => {
       if (!question.trim()) return
 
       // Ensure there is an active session.
@@ -216,7 +216,8 @@ export function useChat() {
           question: question.trim(),
           top_k: topK,
           score_threshold: threshold,
-          document_id: documentId,
+          document_id: collectionId ? undefined : documentId,
+          collection_id: collectionId,
           search_mode: searchMode,
           conversation_history: history,
         }
